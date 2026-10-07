@@ -42,6 +42,9 @@ public sealed class TerminalHost
     /// <summary>A pane header button was pressed: terminal id and the action ("member", "splitRight", "splitDown", "close").</summary>
     public event Action<string, string>? PaneAction;
 
+    /// <summary>An app shortcut was pressed while the terminal page had focus, e.g. "ctrl+shift+p".</summary>
+    public event Action<string>? Shortcut;
+
     public async Task InitializeAsync()
     {
         var dataFolder = Path.Combine(
@@ -190,6 +193,10 @@ public sealed class TerminalHost
             case "ratio":
                 var path = root.GetProperty("path").EnumerateArray().Select(p => p.GetInt32()).ToArray();
                 RatioChanged?.Invoke(root.GetProperty("tab").GetString()!, path, root.GetProperty("ratio").GetDouble());
+                break;
+
+            case "key":
+                Shortcut?.Invoke(root.GetProperty("k").GetString() ?? string.Empty);
                 break;
 
             case "action":

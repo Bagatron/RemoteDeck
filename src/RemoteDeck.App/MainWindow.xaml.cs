@@ -45,6 +45,8 @@ public partial class MainWindow : Window
         RefreshTree();
 
         App.Themes.Applied += OnThemeApplied;
+        _terminals.Shortcut += combo => Dispatcher.InvokeAsync(() => RunShortcut(combo));
+        PreviewKeyDown += OnWindowKeyDown;
 
         Loaded += async (_, _) =>
         {
@@ -83,6 +85,141 @@ public partial class MainWindow : Window
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+
+    // ---- shortcuts and command palette ----
+
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
+        {
+            return;
+        }
+
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? "shift+" : string.Empty;
+        var name = e.Key switch
+        {
+            Key.P => "p",
+            Key.T => "t",
+            Key.W => "w",
+            Key.B => "b",
+            Key.F => "f",
+            Key.Tab => "tab",
+            _ => null,
+        };
+
+        if (name is not null && RunShortcut("ctrl+" + shift + name))
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Runs an app shortcut; returns false when the combination is not one of ours.</summary>
+    private bool RunShortcut(string combo)
+    {
+        switch (combo)
+        {
+            case "ctrl+shift+p":
+                ShowPalette();
+                return true;
+            case "ctrl+shift+t":
+                NewTab(LayoutPreset.Single);
+                return true;
+            case "ctrl+shift+w":
+                if (Current is { } tab)
+                {
+                    CloseTab(tab);
+                }
+
+                return true;
+            case "ctrl+tab":
+                StepTab(1);
+                return true;
+            case "ctrl+shift+tab":
+                StepTab(-1);
+                return true;
+            case "ctrl+shift+b":
+                if (BroadcastToggle.IsEnabled)
+                {
+                    BroadcastToggle.IsChecked = BroadcastToggle.IsChecked != true;
+                    BroadcastToggle_Click(BroadcastToggle, new RoutedEventArgs());
+                }
+
+                return true;
+            case "ctrl+shift+f":
+                SearchBox.Focus();
+                SearchBox.SelectAll();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void StepTab(int step)
+    {
+        if (Tabs.Count > 1)
+        {
+            TabStrip.SelectedIndex = (TabStrip.SelectedIndex + step + Tabs.Count) % Tabs.Count;
+        }
+    }
+
+    private void ShowPalette()
+    {
+        var palette = new CommandPalette(this, BuildPalette);
+        palette.ShowDialog();
+        palette.Chosen?.Invoke();
+
+        // Give the keyboard back to the terminal that had it, unless the action moved focus elsewhere.
+        if (palette.Chosen is null && Current?.FocusedTerminalId is { } id)
+        {
+            _terminals.FocusPane(id);
+        }
+    }
+
+    private IReadOnlyList<PaletteItem> BuildPalette(string query)
+    {
+        var actions = new List<PaletteItem>
+        {
+            new("New tab", "Ctrl+Shift+T", () => NewTab(LayoutPreset.Single)),
+            new("Close tab", "Ctrl+Shift+W", () => RunShortcut("ctrl+shift+w")),
+            new("Next tab", "Ctrl+Tab", () => StepTab(1)),
+            new("Previous tab", "Ctrl+Shift+Tab", () => StepTab(-1)),
+            new("Toggle broadcast", "Ctrl+Shift+B", () => RunShortcut("ctrl+shift+b")),
+            new("Search connections", "Ctrl+Shift+F", () => RunShortcut("ctrl+shift+f")),
+            new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
+            new("Reload themes", string.Empty, () => App.Themes.Reload()),
+        };
+
+        foreach (var preset in Enum.GetNames<LayoutPreset>())
+        {
+            var name = preset;
+            actions.Add(new PaletteItem(
+                "Layout: " + System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", " "),
+                string.Empty,
+                () => Preset_Click(new MenuItem { Tag = name }, new RoutedEventArgs())));
+        }
+
+        foreach (var theme in App.Themes.Themes)
+        {
+            var name = theme.Name;
+            actions.Add(new PaletteItem("Theme: " + name, string.Empty, () => App.Themes.Select(name)));
+        }
+
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var matchingActions = actions.Where(a => words.All(w => a.Title.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        var connections = _data.Store.Search(query, 30).Select(r =>
+        {
+            var entry = r.Connection;
+            return new PaletteItem(
+                "Connect: " + entry.Name,
+                string.IsNullOrEmpty(r.FolderPath) ? entry.Type : r.FolderPath,
+                () => _ = OpenSavedAsync(entry));
+        });
+
+        // With nothing typed, show the actions first; once you type, connections you are probably after come first.
+        return words.Length == 0
+            ? matchingActions.Concat(connections).ToList()
+            : connections.Concat(matchingActions).ToList();
+    }
 
     // ---- themes ----
 
