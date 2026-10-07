@@ -104,6 +104,10 @@ The `Theme` button at the bottom of the sidebar lists the built-in themes (Remot
 
 Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors) and fonts (the terminal uses the theme's font size plus one). Corner radius, border width, density and backdrop are read and checked but not drawn yet. The choice is remembered in `settings.json`.
 
+## Importing
+
+`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, `ProxyJump`, wildcard hosts) is listed in a note when the import finishes.
+
 ## Running the app
 
 ```powershell

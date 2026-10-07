@@ -54,7 +54,10 @@
                 </Grid>
             </StackPanel>
             <Border DockPanel.Dock="Bottom" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-                <Button x:Name="ThemeButton" Content="Theme  &#x25BE;" Padding="10,4" HorizontalAlignment="Left" Click="ThemeButton_Click" />
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="ThemeButton" Content="Theme  &#x25BE;" Padding="10,4" Click="ThemeButton_Click" />
+                    <Button Content="Import..." Padding="10,4" Margin="8,0,0,0" Click="Import_Click" />
+                </StackPanel>
             </Border>
             <TreeView x:Name="Tree" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"

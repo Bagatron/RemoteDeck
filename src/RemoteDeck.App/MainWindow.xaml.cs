@@ -10,6 +10,7 @@ using RemoteDeck.App.Services;
 using RemoteDeck.App.Terminals;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
+using RemoteDeck.Core.Import;
 using RemoteDeck.Core.Layout;
 using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
@@ -134,6 +135,40 @@ public partial class MainWindow : Window
         }
 
         menu.IsOpen = true;
+    }
+
+    // ---- import ----
+
+    private void Import_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import connections",
+            Filter = ConnectionImport.FileDialogFilter,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = ConnectionImport.FromFile(dialog.FileName, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            var problems = result.AddTo(_data.Store);
+            RefreshTree();
+
+            var notes = result.Warnings.Concat(problems).ToList();
+            SetStatus($"Imported {result.Connections.Count - problems.Count} connection(s)" + (notes.Count > 0 ? $", {notes.Count} note(s)." : "."));
+            if (notes.Count > 0)
+            {
+                MessageBox.Show(this, string.Join("\n", notes.Take(20)), "Import notes", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex) when (ex is RemoteDeck.Core.Connections.CatalogException)
+        {
+            MessageBox.Show(this, ex.Message, "Import", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     // ---- sidebar ----
