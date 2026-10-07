@@ -387,6 +387,20 @@
     }
   });
 
+  // App shortcuts. They are caught before the terminal sees them and handled by the host, which also
+  // owns the same list for when the WPF side has focus. Plain Ctrl+letter keys stay with the shell.
+  const shortcuts = new Set([
+    "ctrl+shift+p", "ctrl+shift+t", "ctrl+shift+w", "ctrl+shift+b", "ctrl+shift+f", "ctrl+tab", "ctrl+shift+tab",
+  ]);
+  document.addEventListener("keydown", (e) => {
+    if (!e.ctrlKey || e.altKey || e.metaKey) return;
+    const combo = "ctrl+" + (e.shiftKey ? "shift+" : "") + e.key.toLowerCase();
+    if (!shortcuts.has(combo)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post({ t: "key", k: combo });
+  }, true);
+
   post({ t: "ready" });
 })();
 </script>
