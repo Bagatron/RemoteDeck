@@ -22,6 +22,7 @@
 
   <!-- Ship the real sample files next to the tests so they are checked against the parsers. -->
   <ItemGroup>
+    <None Include="..\..\themes\*.json" Link="themes\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\workspaces\*.json" Link="workspaces\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\HelloPlugin\plugin.json" Link="samples\HelloPlugin\plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

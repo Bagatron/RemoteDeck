@@ -24,6 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The example themes ship next to the executable; your own go in %LOCALAPPDATA%\RemoteDeck\themes. -->
+    <Content Include="..\..\themes\*.json" Link="themes\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The terminal page and xterm.js, copied next to the executable and served to WebView2 from there. -->
     <Content Include="Web\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

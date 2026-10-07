@@ -17,6 +17,10 @@ internal static class AppPaths
 
     public static string Connections => Path.Combine(Folder, "connections.json");
 
+    public static string Settings => Path.Combine(Folder, "settings.json");
+
+    public static string UserThemes => Path.Combine(Folder, "themes");
+
     public static string KnownHosts => Path.Combine(Folder, "known_hosts.json");
 }
 

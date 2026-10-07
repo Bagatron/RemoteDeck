@@ -5,8 +5,8 @@
 <title>RemoteDeck terminals</title>
 <link rel="stylesheet" href="xterm.css">
 <style>
-  :root { --bg: #2e3440; --panel: #3b4252; --line: #4c566a; --text: #d8dee9; --dim: #8f9bb3;
-          --accent: #88c0d0; --red: #bf616a; --yellow: #ebcb8b; --green: #a3be8c; }
+  :root { --bg: #2e3440; --panel: #3b4252; --alt: #434c5e; --line: #4c566a; --text: #eceff4; --dim: #8f9bb3;
+          --accent: #88c0d0; --danger: #bf616a; --warning: #ebcb8b; --success: #a3be8c; --broadcast: #d08770; }
   html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; color: var(--text);
                font: 12px "Segoe UI", system-ui, sans-serif; }
   #root { position: absolute; inset: 0; }
@@ -27,24 +27,24 @@
 
   .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
           position: relative; background: var(--bg); }
-  .pane.live::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--red);
+  .pane.live::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--broadcast);
                       pointer-events: none; z-index: 5; }
   .hdr { flex: 0 0 24px; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px;
          background: var(--panel); border-bottom: 2px solid transparent; user-select: none; }
   .pane.focused .hdr { border-bottom-color: var(--accent); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-right: 6px; flex: none; }
-  .dot.Connected { background: var(--green); }
-  .dot.Connecting { background: var(--yellow); }
-  .dot.Failed { background: var(--red); }
-  .dot.Disconnected { background: #6b7385; }
+  .dot.Connected { background: var(--success); }
+  .dot.Connecting { background: var(--warning); }
+  .dot.Failed { background: var(--danger); }
+  .dot.Disconnected { background: var(--dim); }
   .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .spacer { flex: 1; }
   .hdr button { display: flex; align-items: center; background: none; border: 0; color: var(--dim);
                 padding: 4px; border-radius: 3px; cursor: pointer; }
-  .hdr button:hover { color: var(--text); background: #434c5e; }
+  .hdr button:hover { color: var(--text); background: var(--alt); }
   .pane.empty [data-a="member"] { display: none; }
-  .pane.member [data-a="member"] { color: var(--yellow); }
-  .pane.live [data-a="member"] { color: var(--red); }
+  .pane.member [data-a="member"] { color: var(--warning); }
+  .pane.live [data-a="member"] { color: var(--broadcast); }
 
   .body { position: relative; flex: 1 1 0; min-height: 0; }
   .xt { position: absolute; inset: 0; padding: 4px 0 0 8px; box-sizing: border-box; }
@@ -73,7 +73,8 @@
   //   { t: "ready" } | { t: "in", id, b64 } | { t: "paste", id, text } | { t: "size", id, cols, rows }
   //   { t: "focus", id } | { t: "ratio", tab, path, ratio } | { t: "action", id, a }
   const GUTTER = 5;
-  const THEME = {
+  // Replaced by the host's "theme" message as soon as the page is ready; these are only the first-paint defaults.
+  let termTheme = {
     background: "#2e3440", foreground: "#d8dee9", cursor: "#d8dee9", cursorAccent: "#2e3440",
     selectionBackground: "#434c5e",
     black: "#3b4252", red: "#bf616a", green: "#a3be8c", yellow: "#ebcb8b",
@@ -81,6 +82,7 @@
     brightBlack: "#4c566a", brightRed: "#bf616a", brightGreen: "#a3be8c", brightYellow: "#ebcb8b",
     brightBlue: "#81a1c1", brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4"
   };
+  let termFont = { family: '"Cascadia Mono", Consolas, "Courier New", monospace', size: 14 };
   const ICON = {
     cast: '<svg viewBox="0 0 12 12" width="12" height="12"><circle cx="6" cy="6" r="1.6" fill="currentColor"/><path d="M3.3 3.3a3.8 3.8 0 0 0 0 5.4M8.7 3.3a3.8 3.8 0 0 1 0 5.4" stroke="currentColor" fill="none"/></svg>',
     right: '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor"/><line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor"/></svg>',
@@ -137,11 +139,11 @@
     body.dataset.id = id;
 
     const term = new Terminal({
-      fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
-      fontSize: 14,
+      fontFamily: termFont.family,
+      fontSize: termFont.size,
       cursorBlink: true,
       scrollback: 10000,
-      theme: THEME
+      theme: termTheme
     });
     const fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
@@ -306,6 +308,19 @@
     });
   }
 
+  function applyTheme(m) {
+    const style = document.documentElement.style;
+    for (const [name, value] of Object.entries(m.ui)) style.setProperty("--" + name, value);
+    termTheme = m.term;
+    termFont = m.font;
+    for (const pane of panes.values()) {
+      pane.term.options.theme = termTheme;
+      pane.term.options.fontFamily = termFont.family;
+      pane.term.options.fontSize = termFont.size;
+    }
+    for (const id of panes.keys()) refit(id);
+  }
+
   function updateEmptyHint() {
     emptyHint.classList.toggle("hidden", tabs.size > 0);
   }
@@ -363,6 +378,7 @@
   window.chrome.webview.addEventListener("message", (event) => {
     const m = event.data;
     switch (m.t) {
+      case "theme": applyTheme(m); break;
       case "sync": sync(m); break;
       case "show": showTab(m.tab); break;
       case "closeTab": closeTab(m.tab); break;

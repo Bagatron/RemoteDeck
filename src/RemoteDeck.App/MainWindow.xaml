@@ -53,6 +53,9 @@
                     <Button Grid.Column="2" Content="+ Folder" Padding="8,4" HorizontalAlignment="Stretch" Click="NewFolder_Click" />
                 </Grid>
             </StackPanel>
+            <Border DockPanel.Dock="Bottom" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
+                <Button x:Name="ThemeButton" Content="Theme  &#x25BE;" Padding="10,4" HorizontalAlignment="Left" Click="ThemeButton_Click" />
+            </Border>
             <TreeView x:Name="Tree" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"
                       PreviewMouseRightButtonDown="Tree_PreviewMouseRightButtonDown">

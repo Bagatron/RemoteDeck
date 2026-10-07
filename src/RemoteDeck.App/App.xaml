@@ -7,8 +7,12 @@
         <SolidColorBrush x:Key="Panel" Color="#3B4252" />
         <SolidColorBrush x:Key="PanelHover" Color="#434C5E" />
         <SolidColorBrush x:Key="Line" Color="#4C566A" />
-        <SolidColorBrush x:Key="Text" Color="#D8DEE9" />
+        <SolidColorBrush x:Key="Text" Color="#ECEFF4" />
         <SolidColorBrush x:Key="TextDim" Color="#8F9BB3" />
         <SolidColorBrush x:Key="Accent" Color="#88C0D0" />
+        <SolidColorBrush x:Key="Danger" Color="#BF616A" />
+        <SolidColorBrush x:Key="Warning" Color="#EBCB8B" />
+        <SolidColorBrush x:Key="Success" Color="#A3BE8C" />
+        <SolidColorBrush x:Key="Broadcast" Color="#D08770" />
     </Application.Resources>
 </Application>

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,6 +11,7 @@ using RemoteDeck.App.Terminals;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Core.Layout;
+using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
 using RemoteDeck.Protocols.Ssh;
 using RemoteDeck.Vault;
@@ -41,11 +43,14 @@ public partial class MainWindow : Window
 
         RefreshTree();
 
+        App.Themes.Applied += OnThemeApplied;
+
         Loaded += async (_, _) =>
         {
             try
             {
                 await _terminals.InitializeAsync();
+                _terminals.SetTheme(App.Themes.Current);
             }
             catch (Exception ex)
             {
@@ -60,6 +65,8 @@ public partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
+            App.Themes.Applied -= OnThemeApplied;
+
             foreach (var tab in Tabs.ToArray())
             {
                 foreach (var session in tab.Sessions)
@@ -75,6 +82,59 @@ public partial class MainWindow : Window
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+
+    // ---- themes ----
+
+    private void OnThemeApplied(Theme theme)
+    {
+        _terminals.SetTheme(theme);
+        if (App.Themes.Problems.Count > 0)
+        {
+            SetStatus("Theme file problem: " + App.Themes.Problems[0]);
+        }
+    }
+
+    private void ThemeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = ThemeButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+
+        foreach (var theme in App.Themes.Themes)
+        {
+            var item = new MenuItem
+            {
+                Header = theme.Name,
+                IsCheckable = true,
+                IsChecked = theme.Name == App.Themes.Current.Name,
+            };
+            var name = theme.Name;
+            item.Click += (_, _) => App.Themes.Select(name);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+
+        var folder = new MenuItem { Header = "Open my themes folder" };
+        folder.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{App.Themes.UserFolder}\"") { UseShellExecute = true });
+        menu.Items.Add(folder);
+
+        var reload = new MenuItem { Header = "Reload themes" };
+        reload.Click += (_, _) => App.Themes.Reload();
+        menu.Items.Add(reload);
+
+        if (App.Themes.Problems.Count > 0)
+        {
+            var problems = new MenuItem { Header = $"Theme problems ({App.Themes.Problems.Count})..." };
+            problems.Click += (_, _) => MessageBox.Show(
+                this,
+                string.Join("\n\n", App.Themes.Problems),
+                "Theme problems",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            menu.Items.Add(problems);
+        }
+
+        menu.IsOpen = true;
+    }
 
     // ---- sidebar ----
 
@@ -741,10 +801,37 @@ public partial class MainWindow : Window
 
     private void BroadcastToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (Current is { } tab)
+        if (Current is not { } tab)
         {
-            tab.Router.SetEnabled(BroadcastToggle.IsChecked == true);
+            return;
         }
+
+        var turnOn = BroadcastToggle.IsChecked == true;
+        if (turnOn && tab.Router.Members.Count == 0)
+        {
+            // The switch only mirrors typing between panes that are in the group, so offer to put them all in.
+            var running = tab.Sessions.Where(s => !s.IsEmpty).ToList();
+            if (running.Count < 2)
+            {
+                BroadcastToggle.IsChecked = false;
+                SetStatus("Broadcast needs at least two open sessions in this tab.");
+                return;
+            }
+
+            if (!Confirm($"No panes are in the broadcast group yet. Add all {running.Count} open sessions to it?"))
+            {
+                BroadcastToggle.IsChecked = false;
+                SetStatus("Click the broadcast icon in each pane header to choose which panes join the group.");
+                return;
+            }
+
+            foreach (var session in running)
+            {
+                tab.Router.SetMember(session.TerminalId, true);
+            }
+        }
+
+        tab.Router.SetEnabled(turnOn);
     }
 
     private void CommandBox_KeyDown(object sender, KeyEventArgs e)
@@ -821,7 +908,12 @@ public partial class MainWindow : Window
         BroadcastToggle.IsChecked = on;
         BroadcastToggle.Content = on ? "Broadcast: ON" : "Broadcast: off";
         BroadcastToggle.Foreground = on ? Brushes.IndianRed : (Brush)FindResource("Text");
-        SetStatus(members == 0 ? "No panes in the group" : $"{members} pane(s) in the group");
+        SetStatus(members switch
+        {
+            0 => "No panes in the group",
+            1 when on => "Only 1 pane is in the group, so nothing is mirrored. Click the broadcast icon in the other panes' headers.",
+            _ => $"{members} pane(s) in the group",
+        });
     }
 
     private void SetStatus(string text) => BroadcastStatus.Text = text;

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using RemoteDeck.Core.Themes;
 
 namespace RemoteDeck.App.Terminals;
 
@@ -86,6 +87,58 @@ public sealed class TerminalHost
 
     /// <summary>Shows a tab's current layout and pane details. Safe to call as often as needed.</summary>
     public void Sync(WorkspaceTab tab) => Send(tab.ToSync());
+
+    /// <summary>Gives the page the interface colors, the terminal palette and the terminal font.</summary>
+    public void SetTheme(Theme theme)
+    {
+        var c = theme.Colors;
+        var t = theme.Terminal;
+        var names = new[]
+        {
+            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+            "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite",
+        };
+
+        var term = new JsonObject
+        {
+            ["background"] = t.Background,
+            ["foreground"] = t.Foreground,
+            ["cursor"] = t.Cursor,
+            ["cursorAccent"] = t.Background,
+            ["selectionBackground"] = t.Selection,
+        };
+        for (var i = 0; i < names.Length; i++)
+        {
+            term[names[i]] = t.Ansi[i];
+        }
+
+        // The configured font first, then sensible fallbacks. Quotes are stripped so a name cannot break out of the CSS.
+        var mono = theme.Font.Mono.Replace("\"", string.Empty).Replace("'", string.Empty);
+        Send(new JsonObject
+        {
+            ["t"] = "theme",
+            ["ui"] = new JsonObject
+            {
+                ["bg"] = c.Background,
+                ["panel"] = c.Surface,
+                ["alt"] = c.SurfaceAlt,
+                ["line"] = c.Border,
+                ["text"] = c.Foreground,
+                ["dim"] = c.MutedForeground,
+                ["accent"] = c.Accent,
+                ["danger"] = c.Danger,
+                ["warning"] = c.Warning,
+                ["success"] = c.Success,
+                ["broadcast"] = c.Broadcast,
+            },
+            ["term"] = term,
+            ["font"] = new JsonObject
+            {
+                ["family"] = $"\"{mono}\", \"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+                ["size"] = theme.Font.Size + 1,
+            },
+        });
+    }
 
     public void ShowTab(string tabId) => Send(new JsonObject { ["t"] = "show", ["tab"] = tabId });
 

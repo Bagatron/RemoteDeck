@@ -98,6 +98,12 @@ VaultStorage.Save(vault, path);
 
 Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
 
+## Themes
+
+The `Theme` button at the bottom of the sidebar lists the built-in themes (RemoteDeck Dark and Light), the example files in the `themes` folder next to the program, and your own. Put your own `.json` files in `%LOCALAPPDATA%\RemoteDeck\themes` (the `Open my themes folder` item opens it); a file there replaces a shipped theme of the same name. Saving a theme file applies it straight away, no restart needed. A file with a mistake is skipped and the `Theme problems` item names the file and the field.
+
+Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors) and fonts (the terminal uses the theme's font size plus one). Corner radius, border width, density and backdrop are read and checked but not drawn yet. The choice is remembered in `settings.json`.
+
 ## Running the app
 
 ```powershell
@@ -148,7 +154,7 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 ## Roadmap
 
 1. **MVP**: WPF shell (WPF-UI), connection tree and tabs, RDP and SSH, encrypted vault (Argon2id + AES-256-GCM)
-2. Themes loader with hot reload, importers (mRemoteNG, RDCMan, PuTTY, `.rdp`, `~/.ssh/config`)
+2. Importers (mRemoteNG, RDCMan, PuTTY, `.rdp`, `~/.ssh/config`)
 3. Wire split panes and broadcast into the UI (single WebView2 hosting all terminals)
 4. VNC, SFTP, web tabs, command palette, plugin loading with `AssemblyLoadContext`
 5. Packaging for winget, Scoop and Chocolatey
