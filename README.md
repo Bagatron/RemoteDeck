@@ -11,6 +11,7 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `src/RemoteDeck.Plugin.Abstractions` | The public plugin API: `IConnection`, `ITerminalConnection`, `IConnectionFactory`, `ICredentialBroker`, `IPlugin`, `IPluginContext`. Plugins depend on this and nothing else. |
 | `src/RemoteDeck.Core` | UI-independent logic: the split tree and presets (`Layout/`), the broadcast router and safety checks (`Broadcast/`), the saved-connection store with folders, search and credential inheritance (`Connections/`), and the `plugin.json` loader (`Plugins/`). |
 | `src/RemoteDeck.Vault` | The encrypted credential vault (Argon2id + AES-256-GCM), its file storage, and the credential broker handed to plugins. |
+| `src/RemoteDeck.App` | The Windows app (WPF). One WebView2 draws every terminal with xterm.js; tabs, sessions and SSH are handled in C#. Saved connections, vault unlock, SSH tabs. |
 | `src/RemoteDeck.Protocols.Ssh` | SSH terminal connections (built on SSH.NET): key or password login, trust-on-first-use host keys, keep-alive, resize. Plugs in as an `ITerminalConnection`, so split panes and broadcast work with it. |
 | `tools/SshSmoke` | A throwaway command-line SSH client for trying the library against a real server. |
 | `tests/RemoteDeck.Core.Tests` | xUnit tests for the core library, including the shipped sample files. |
@@ -96,6 +97,22 @@ VaultStorage.Save(vault, path);
 ```
 
 Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
+
+## Running the app
+
+```powershell
+dotnet run --project src/RemoteDeck.App
+```
+
+The first start asks you to create a master password; after that it asks for it each time. Passwords you save are encrypted in `%LOCALAPPDATA%\RemoteDeck\vault.json` (Argon2id + AES-256-GCM), and your connections are stored without any secrets in `connections.json` next to it. There is no way to recover a forgotten master password.
+
+- **Sidebar:** `+ Connection` and `+ Folder` add entries, double-click (or Enter) opens one, right-click edits, renames or deletes. The search box filters as you type.
+- **Split panes:** the `Layout` button switches the current tab to a preset (two columns, 2 x 2 grid, and so on). Each pane header has buttons to split right or down. Drag the bars between panes to resize them. A saved connection opens in the focused empty pane, or in a new tab if none is empty; use right-click, `Open in new tab` to force a new tab. The x in a pane header ends its session, and a second click on an empty pane removes it.
+- **Broadcast:** click the broadcast icon in each pane header you want in the group, then either switch on `Broadcast` (whatever you type in a grouped pane goes to all of them; the panes get a red border) or type a command in the bar and press Enter to run it on every grouped pane. Multi-line pastes and risky commands such as `rm -rf` or `shutdown` ask for confirmation first. Broadcast always starts off.
+- **Quick connect:** type `user@host` (or `user@host:port`) above the tabs for a one-off connection that is not saved.
+- **Terminal:** Ctrl+C copies when text is selected, and Ctrl+V or Ctrl+Shift+V pastes.
+
+Needs the Microsoft Edge WebView2 runtime (already present on Windows 11).
 
 ## SSH
 

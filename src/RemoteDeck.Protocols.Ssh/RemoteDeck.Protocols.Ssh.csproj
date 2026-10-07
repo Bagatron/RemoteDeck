@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <!-- The SSH protocol itself. Everything else in this project is our own thin layer on top of it. -->
-    <PackageReference Include="SSH.NET" Version="2025.0.0" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
   </ItemGroup>
 
   <ItemGroup>

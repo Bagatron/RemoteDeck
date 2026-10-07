@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RemoteDeck</AssemblyName>
+    <RootNamespace>RemoteDeck.App</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- WPF's built-in dark theme (Application.ThemeMode) is still marked experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Hosts the terminal page (xterm.js). Needs the WebView2 runtime, which ships with Windows 11 and current Edge. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Core\RemoteDeck.Core.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Vault\RemoteDeck.Vault.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Protocols.Ssh\RemoteDeck.Protocols.Ssh.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The terminal page and xterm.js, copied next to the executable and served to WebView2 from there. -->
+    <Content Include="Web\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+<Window x:Class="RemoteDeck.App.Dialogs.LoginDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sign in" Width="420" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource Back}" Foreground="{StaticResource Text}">
+    <StackPanel Margin="20">
+        <TextBlock x:Name="Heading" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+
+        <TextBlock Text="Password" Margin="0,16,0,4" Foreground="{StaticResource TextDim}" />
+        <PasswordBox x:Name="PasswordBox" Padding="6,5" />
+
+        <TextBlock Text="Private key file (optional)" Margin="0,12,0,4" Foreground="{StaticResource TextDim}" />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Browse..." Margin="6,0,0,0" Padding="10,4" Click="Browse_Click" />
+            <TextBox x:Name="KeyBox" Padding="6,5" />
+        </DockPanel>
+        <TextBlock Text="With a key, the password above is the key's passphrase (leave it empty if the key has none)."
+                   Margin="0,4,0,0" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextDim}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Connect" IsDefault="True" Padding="18,5" Margin="0,0,8,0" Click="Connect_Click" />
+            <Button Content="Cancel" IsCancel="True" Padding="18,5" />
+        </StackPanel>
+    </StackPanel>
+</Window>

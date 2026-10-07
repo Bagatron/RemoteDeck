@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RemoteDeck terminals</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  :root { --bg: #2e3440; --panel: #3b4252; --line: #4c566a; --text: #d8dee9; --dim: #8f9bb3;
+          --accent: #88c0d0; --red: #bf616a; --yellow: #ebcb8b; --green: #a3be8c; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; color: var(--text);
+               font: 12px "Segoe UI", system-ui, sans-serif; }
+  #root { position: absolute; inset: 0; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+           color: var(--dim); font-size: 15px; pointer-events: none; }
+  #empty.hidden { display: none; }
+
+  .tab { position: absolute; inset: 0; display: none; }
+  .tab.active { display: flex; }
+
+  .split { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+  .split.columns { flex-direction: row; }
+  .split.rows { flex-direction: column; }
+  .gutter { flex: 0 0 5px; background: var(--line); }
+  .split.columns > .gutter { cursor: col-resize; }
+  .split.rows > .gutter { cursor: row-resize; }
+  .gutter:hover, .gutter.drag { background: var(--accent); }
+
+  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+          position: relative; background: var(--bg); }
+  .pane.live::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--red);
+                      pointer-events: none; z-index: 5; }
+  .hdr { flex: 0 0 24px; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px;
+         background: var(--panel); border-bottom: 2px solid transparent; user-select: none; }
+  .pane.focused .hdr { border-bottom-color: var(--accent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-right: 6px; flex: none; }
+  .dot.Connected { background: var(--green); }
+  .dot.Connecting { background: var(--yellow); }
+  .dot.Failed { background: var(--red); }
+  .dot.Disconnected { background: #6b7385; }
+  .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .spacer { flex: 1; }
+  .hdr button { display: flex; align-items: center; background: none; border: 0; color: var(--dim);
+                padding: 4px; border-radius: 3px; cursor: pointer; }
+  .hdr button:hover { color: var(--text); background: #434c5e; }
+  .pane.empty [data-a="member"] { display: none; }
+  .pane.member [data-a="member"] { color: var(--yellow); }
+  .pane.live [data-a="member"] { color: var(--red); }
+
+  .body { position: relative; flex: 1 1 0; min-height: 0; }
+  .xt { position: absolute; inset: 0; padding: 4px 0 0 8px; box-sizing: border-box; }
+  .placeholder { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+                 text-align: center; color: var(--dim); line-height: 1.7; pointer-events: none; }
+  .pane.empty .placeholder { display: flex; }
+  .pane.empty .xt { visibility: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="empty">Double-click a saved connection, or use Quick connect.</div>
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  // The host (WPF) owns tabs, layouts, sessions and the network. This page draws the panes and terminals and
+  // forwards keystrokes. Every pane is identified by the id of its terminal.
+  //
+  // Host -> page:
+  //   { t: "sync", tab, tree, panes: [{ id, title, state, empty, member }], broadcast }   (idempotent)
+  //   { t: "show", tab } | { t: "closeTab", tab } | { t: "out", id, b64 } | { t: "focusPane", id }
+  // Page -> host:
+  //   { t: "ready" } | { t: "in", id, b64 } | { t: "paste", id, text } | { t: "size", id, cols, rows }
+  //   { t: "focus", id } | { t: "ratio", tab, path, ratio } | { t: "action", id, a }
+  const GUTTER = 5;
+  const THEME = {
+    background: "#2e3440", foreground: "#d8dee9", cursor: "#d8dee9", cursorAccent: "#2e3440",
+    selectionBackground: "#434c5e",
+    black: "#3b4252", red: "#bf616a", green: "#a3be8c", yellow: "#ebcb8b",
+    blue: "#81a1c1", magenta: "#b48ead", cyan: "#88c0d0", white: "#e5e9f0",
+    brightBlack: "#4c566a", brightRed: "#bf616a", brightGreen: "#a3be8c", brightYellow: "#ebcb8b",
+    brightBlue: "#81a1c1", brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4"
+  };
+  const ICON = {
+    cast: '<svg viewBox="0 0 12 12" width="12" height="12"><circle cx="6" cy="6" r="1.6" fill="currentColor"/><path d="M3.3 3.3a3.8 3.8 0 0 0 0 5.4M8.7 3.3a3.8 3.8 0 0 1 0 5.4" stroke="currentColor" fill="none"/></svg>',
+    right: '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor"/><line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor"/></svg>',
+    down: '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor"/></svg>',
+    close: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" fill="none"/></svg>'
+  };
+
+  const root = document.getElementById("root");
+  const emptyHint = document.getElementById("empty");
+  const encoder = new TextEncoder();
+  const tabs = new Map();   // tab id -> { el, key, ids: Set, focused }
+  const panes = new Map();  // terminal id -> pane record
+  let activeTab = null;
+
+  const post = (message) => window.chrome.webview.postMessage(message);
+
+  function toBase64(bytes) {
+    let text = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(text);
+  }
+
+  function fromBase64(text) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const id = entry.target.dataset.id;
+      if (id) refit(id);
+    }
+  });
+
+  // ---- panes ----
+
+  function createPane(tabId, id) {
+    const el = document.createElement("div");
+    el.className = "pane empty";
+    el.innerHTML =
+      '<div class="hdr"><span class="dot"></span><span class="title"></span><span class="spacer"></span>' +
+      '<button data-a="member" title="Include in broadcast group">' + ICON.cast + '</button>' +
+      '<button data-a="splitRight" title="Split right">' + ICON.right + '</button>' +
+      '<button data-a="splitDown" title="Split down">' + ICON.down + '</button>' +
+      '<button data-a="close">' + ICON.close + '</button></div>' +
+      '<div class="body"><div class="xt"></div>' +
+      '<div class="placeholder"><div>Empty pane<br>Double-click a saved connection to open it here</div></div></div>';
+
+    const body = el.querySelector(".body");
+    body.dataset.id = id;
+
+    const term = new Terminal({
+      fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
+      fontSize: 14,
+      cursorBlink: true,
+      scrollback: 10000,
+      theme: THEME
+    });
+    const fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+
+    term.onData((data) => post({ t: "in", id, b64: toBase64(encoder.encode(data)) }));
+    term.onBinary((data) => {
+      const bytes = new Uint8Array(data.length);
+      for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
+      post({ t: "in", id, b64: toBase64(bytes) });
+    });
+
+    // Ctrl+C copies when text is selected (otherwise it is the usual interrupt), Ctrl+Shift+C always.
+    // Ctrl+V pastes: the host decides where it goes, so a paste into a broadcast group can be confirmed first.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown" || !e.ctrlKey || e.altKey) return true;
+      const key = e.key.toLowerCase();
+      if (key === "c" && (e.shiftKey || term.hasSelection())) {
+        e.preventDefault();
+        if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+        return false;
+      }
+      if (key === "v") {
+        e.preventDefault();
+        navigator.clipboard.readText().then((text) => {
+          if (!text) return;
+          let data = text.replace(/\r?\n/g, "\r");
+          if (term.modes.bracketedPasteMode) data = "\x1b[200~" + data + "\x1b[201~";
+          post({ t: "paste", id, text: data });
+        }).catch(() => {});
+        return false;
+      }
+      return true;
+    });
+
+    el.querySelector(".hdr").addEventListener("click", (e) => {
+      const button = e.target.closest("button");
+      if (button) post({ t: "action", id, a: button.dataset.a });
+    });
+    el.addEventListener("mousedown", () => setFocus(id));
+    el.addEventListener("focusin", () => setFocus(id));
+
+    const pane = {
+      tabId, id, el, body, term, fit,
+      xt: el.querySelector(".xt"),
+      dot: el.querySelector(".dot"),
+      title: el.querySelector(".title"),
+      closeButton: el.querySelector('[data-a="close"]'),
+      opened: false, wasEmpty: true
+    };
+    panes.set(id, pane);
+    observer.observe(body);
+    return pane;
+  }
+
+  function destroyPane(id) {
+    const pane = panes.get(id);
+    if (!pane) return;
+    observer.unobserve(pane.body);
+    pane.term.dispose();
+    pane.el.remove();
+    panes.delete(id);
+  }
+
+  function updatePane(meta, broadcast) {
+    const pane = panes.get(meta.id);
+    if (!pane) return;
+
+    pane.title.textContent = meta.title || "";
+    pane.dot.className = "dot " + (meta.empty ? "" : meta.state);
+    pane.el.classList.toggle("empty", meta.empty);
+    pane.el.classList.toggle("member", meta.member);
+    pane.el.classList.toggle("live", broadcast && meta.member);
+    pane.closeButton.title = meta.empty ? "Remove this pane" : "End this session";
+
+    if (meta.empty && !pane.wasEmpty) pane.term.reset();
+    pane.wasEmpty = meta.empty;
+  }
+
+  function openIfNeeded(pane) {
+    if (pane.opened || !pane.el.isConnected || pane.el.offsetParent === null) return;
+    pane.term.open(pane.xt);
+    pane.opened = true;
+  }
+
+  function refit(id) {
+    const pane = panes.get(id);
+    if (!pane) return;
+    openIfNeeded(pane);
+    if (!pane.opened || pane.el.offsetParent === null) return;
+    try { pane.fit.fit(); } catch { return; }
+    post({ t: "size", id, cols: pane.term.cols, rows: pane.term.rows });
+  }
+
+  function setFocus(id) {
+    const pane = panes.get(id);
+    const tab = pane && tabs.get(pane.tabId);
+    if (!tab || tab.focused === id) return;
+    if (tab.focused && panes.has(tab.focused)) panes.get(tab.focused).el.classList.remove("focused");
+    tab.focused = id;
+    pane.el.classList.add("focused");
+    post({ t: "focus", id });
+  }
+
+  // ---- layout ----
+
+  function structureKey(node) {
+    return node.k === "pane" ? node.id : node.o + "(" + structureKey(node.a) + "," + structureKey(node.b) + ")";
+  }
+
+  function build(node, path, tabId) {
+    if (node.k === "pane") return panes.get(node.id).el;
+
+    const wrap = document.createElement("div");
+    wrap.className = "split " + node.o;
+    const first = build(node.a, path.concat(0), tabId);
+    const second = build(node.b, path.concat(1), tabId);
+    first.style.flex = node.r + " 1 0";
+    second.style.flex = (1 - node.r) + " 1 0";
+
+    const gutter = document.createElement("div");
+    gutter.className = "gutter";
+    wrap.append(first, gutter, second);
+    attachDrag(gutter, wrap, first, second, node.o === "columns", path, tabId);
+    return wrap;
+  }
+
+  function attachDrag(gutter, wrap, first, second, horizontal, path, tabId) {
+    gutter.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      gutter.setPointerCapture(e.pointerId);
+      gutter.classList.add("drag");
+      let ratio = null;
+
+      const move = (ev) => {
+        const rect = wrap.getBoundingClientRect();
+        const size = (horizontal ? rect.width : rect.height) - GUTTER;
+        if (size <= 0) return;
+        const pos = (horizontal ? ev.clientX - rect.left : ev.clientY - rect.top) - GUTTER / 2;
+        ratio = Math.min(0.95, Math.max(0.05, pos / size));
+        first.style.flex = ratio + " 1 0";
+        second.style.flex = (1 - ratio) + " 1 0";
+      };
+      const up = (ev) => {
+        gutter.releasePointerCapture(ev.pointerId);
+        gutter.classList.remove("drag");
+        gutter.removeEventListener("pointermove", move);
+        gutter.removeEventListener("pointerup", up);
+        if (ratio !== null) post({ t: "ratio", tab: tabId, path, ratio });
+      };
+      gutter.addEventListener("pointermove", move);
+      gutter.addEventListener("pointerup", up);
+    });
+  }
+
+  function afterLayout(tabId) {
+    requestAnimationFrame(() => {
+      const tab = tabs.get(tabId);
+      if (!tab || tabId !== activeTab) return;
+      for (const id of tab.ids) refit(id);
+      const target = (tab.focused && panes.get(tab.focused)) || null;
+      if (target && target.opened && !target.el.classList.contains("empty")) target.term.focus();
+    });
+  }
+
+  function updateEmptyHint() {
+    emptyHint.classList.toggle("hidden", tabs.size > 0);
+  }
+
+  function sync(m) {
+    let tab = tabs.get(m.tab);
+    if (!tab) {
+      const el = document.createElement("div");
+      el.className = "tab";
+      root.appendChild(el);
+      tab = { el, key: null, ids: new Set(), focused: null };
+      tabs.set(m.tab, tab);
+      updateEmptyHint();
+    }
+
+    const wanted = new Set(m.panes.map((p) => p.id));
+    for (const id of tab.ids) {
+      if (!wanted.has(id)) {
+        destroyPane(id);
+        if (tab.focused === id) tab.focused = null;
+      }
+    }
+    for (const meta of m.panes) {
+      if (!panes.has(meta.id)) createPane(m.tab, meta.id);
+      updatePane(meta, m.broadcast);
+    }
+    tab.ids = wanted;
+
+    const key = structureKey(m.tree);
+    if (key !== tab.key) {
+      tab.key = key;
+      const top = build(m.tree, [], m.tab);
+      top.style.flex = "1 1 0";
+      tab.el.replaceChildren(top);
+      afterLayout(m.tab);
+    }
+  }
+
+  function showTab(tabId) {
+    activeTab = tabId;
+    for (const [id, tab] of tabs) tab.el.classList.toggle("active", id === tabId);
+    afterLayout(tabId);
+  }
+
+  function closeTab(tabId) {
+    const tab = tabs.get(tabId);
+    if (!tab) return;
+    for (const id of [...tab.ids]) destroyPane(id);
+    tab.el.remove();
+    tabs.delete(tabId);
+    if (activeTab === tabId) activeTab = null;
+    updateEmptyHint();
+  }
+
+  window.chrome.webview.addEventListener("message", (event) => {
+    const m = event.data;
+    switch (m.t) {
+      case "sync": sync(m); break;
+      case "show": showTab(m.tab); break;
+      case "closeTab": closeTab(m.tab); break;
+      case "out": panes.get(m.id)?.term.write(fromBase64(m.b64)); break;
+      case "focusPane": panes.get(m.id)?.term.focus(); break;
+    }
+  });
+
+  post({ t: "ready" });
+})();
+</script>
+</body>
+</html>
