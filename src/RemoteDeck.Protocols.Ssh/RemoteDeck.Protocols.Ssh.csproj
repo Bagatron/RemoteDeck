@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Protocols.Ssh</AssemblyName>
+    <RootNamespace>RemoteDeck.Protocols.Ssh</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SSH protocol itself. Everything else in this project is our own thin layer on top of it. -->
+    <PackageReference Include="SSH.NET" Version="2025.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Depends only on the public plugin contracts, exactly like a community plugin would. -->
+    <ProjectReference Include="..\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RemoteDeck.Protocols.Ssh.Tests" />
+  </ItemGroup>
+
+</Project>

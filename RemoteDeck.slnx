@@ -3,6 +3,10 @@
     <Project Path="src/RemoteDeck.Plugin.Abstractions/RemoteDeck.Plugin.Abstractions.csproj" />
     <Project Path="src/RemoteDeck.Core/RemoteDeck.Core.csproj" />
     <Project Path="src/RemoteDeck.Vault/RemoteDeck.Vault.csproj" />
+    <Project Path="src/RemoteDeck.Protocols.Ssh/RemoteDeck.Protocols.Ssh.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SshSmoke/SshSmoke.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/HelloPlugin/HelloPlugin.csproj" />
@@ -10,5 +14,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/RemoteDeck.Core.Tests/RemoteDeck.Core.Tests.csproj" />
     <Project Path="tests/RemoteDeck.Vault.Tests/RemoteDeck.Vault.Tests.csproj" />
+    <Project Path="tests/RemoteDeck.Protocols.Ssh.Tests/RemoteDeck.Protocols.Ssh.Tests.csproj" />
   </Folder>
 </Solution>

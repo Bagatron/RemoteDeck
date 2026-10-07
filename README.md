@@ -11,8 +11,11 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `src/RemoteDeck.Plugin.Abstractions` | The public plugin API: `IConnection`, `ITerminalConnection`, `IConnectionFactory`, `ICredentialBroker`, `IPlugin`, `IPluginContext`. Plugins depend on this and nothing else. |
 | `src/RemoteDeck.Core` | UI-independent logic: the split tree and presets (`Layout/`), the broadcast router and safety checks (`Broadcast/`), the saved-connection store with folders, search and credential inheritance (`Connections/`), and the `plugin.json` loader (`Plugins/`). |
 | `src/RemoteDeck.Vault` | The encrypted credential vault (Argon2id + AES-256-GCM), its file storage, and the credential broker handed to plugins. |
+| `src/RemoteDeck.Protocols.Ssh` | SSH terminal connections (built on SSH.NET): key or password login, trust-on-first-use host keys, keep-alive, resize. Plugs in as an `ITerminalConnection`, so split panes and broadcast work with it. |
+| `tools/SshSmoke` | A throwaway command-line SSH client for trying the library against a real server. |
 | `tests/RemoteDeck.Core.Tests` | xUnit tests for the core library, including the shipped sample files. |
 | `tests/RemoteDeck.Vault.Tests` | xUnit tests for the vault: round trips, wrong passwords, tamper detection, locking, storage, broker permissions. |
+| `tests/RemoteDeck.Protocols.Ssh.Tests` | xUnit tests for SSH using fake sessions (no network): credentials, host keys, options, lifecycle. |
 | `samples/HelloPlugin` | A tiny plugin: one palette command and a demo "echo" terminal type. Copy it to start your own. |
 | `themes/`, `workspaces/` | Example theme and workspace files. |
 | `schemas/` | JSON Schemas for themes, workspaces and `plugin.json` (add `"$schema"` to a file for editor autocomplete). |
@@ -93,6 +96,29 @@ VaultStorage.Save(vault, path);
 ```
 
 Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
+
+## SSH
+
+Connections of type `ssh` use these options (all optional, set in the connection's `Options`):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `username` | none | Used when no saved credential supplies one |
+| `privateKeyPath` | none | Log in with a key; the credential's password is then the key passphrase |
+| `term` | `xterm-256color` | Terminal type requested from the server |
+| `keepAliveSeconds` | `30` | `0` turns keep-alive off (max 3600) |
+| `connectTimeoutSeconds` | `15` | 1 to 300 |
+
+The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
+
+To try it against a real server (use PowerShell or Windows Terminal):
+
+```powershell
+dotnet run --project tools/SshSmoke -- me@my-server
+dotnet run --project tools/SshSmoke -- me@my-server:2222 -i C:\Users\me\.ssh\id_ed25519
+```
+
+Press Ctrl+] to quit.
 
 ## Writing a plugin
 

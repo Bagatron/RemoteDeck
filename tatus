@@ -1,0 +1,70 @@
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'RemoteDeck.slnx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/README.md b/README.md[m
+[1mindex 98bc142..1d07d42 100644[m
+[1m--- a/README.md[m
+[1m+++ b/README.md[m
+[36m@@ -11,8 +11,11 @@[m [mAn open-source, lightweight remote desktop and terminal manager for Windows. No[m
+ | `src/RemoteDeck.Plugin.Abstractions` | The public plugin API: `IConnection`, `ITerminalConnection`, `IConnectionFactory`, `ICredentialBroker`, `IPlugin`, `IPluginContext`. Plugins depend on this and nothing else. |[m
+ | `src/RemoteDeck.Core` | UI-independent logic: the split tree and presets (`Layout/`), the broadcast router and safety checks (`Broadcast/`), the saved-connection store with folders, search and credential inheritance (`Connections/`), and the `plugin.json` loader (`Plugins/`). |[m
+ | `src/RemoteDeck.Vault` | The encrypted credential vault (Argon2id + AES-256-GCM), its file storage, and the credential broker handed to plugins. |[m
+[32m+[m[32m| `src/RemoteDeck.Protocols.Ssh` | SSH terminal connections (built on SSH.NET): key or password login, trust-on-first-use host keys, keep-alive, resize. Plugs in as an `ITerminalConnection`, so split panes and broadcast work with it. |[m
+[32m+[m[32m| `tools/SshSmoke` | A throwaway command-line SSH client for trying the library against a real server. |[m
+ | `tests/RemoteDeck.Core.Tests` | xUnit tests for the core library, including the shipped sample files. |[m
+ | `tests/RemoteDeck.Vault.Tests` | xUnit tests for the vault: round trips, wrong passwords, tamper detection, locking, storage, broker permissions. |[m
+[32m+[m[32m| `tests/RemoteDeck.Protocols.Ssh.Tests` | xUnit tests for SSH using fake sessions (no network): credentials, host keys, options, lifecycle. |[m
+ | `samples/HelloPlugin` | A tiny plugin: one palette command and a demo "echo" terminal type. Copy it to start your own. |[m
+ | `themes/`, `workspaces/` | Example theme and workspace files. |[m
+ | `schemas/` | JSON Schemas for themes, workspaces and `plugin.json` (add `"$schema"` to a file for editor autocomplete). |[m
+[36m@@ -94,6 +97,29 @@[m [mVaultStorage.Save(vault, path);[m
+ [m
+ Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.[m
+ [m
+[32m+[m[32m## SSH[m
+[32m+[m
+[32m+[m[32mConnections of type `ssh` use these options (all optional, set in the connection's `Options`):[m
+[32m+[m
+[32m+[m[32m| Option | Default | Meaning |[m
+[32m+[m[32m|---|---|---|[m
+[32m+[m[32m| `username` | none | Used when no saved credential supplies one |[m
+[32m+[m[32m| `privateKeyPath` | none | Log in with a key; the credential's password is then the key passphrase |[m
+[32m+[m[32m| `term` | `xterm-256color` | Terminal type requested from the server |[m
+[32m+[m[32m| `keepAliveSeconds` | `30` | `0` turns keep-alive off (max 3600) |[m
+[32m+[m[32m| `connectTimeoutSeconds` | `15` | 1 to 300 |[m
+[32m+[m
+[32m+[m[32mThe port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.[m
+[32m+[m
+[32m+[m[32mTo try it against a real server (use PowerShell or Windows Terminal):[m
+[32m+[m
+[32m+[m[32m```powershell[m
+[32m+[m[32mdotnet run --project tools/SshSmoke -- me@my-server[m
+[32m+[m[32mdotnet run --project tools/SshSmoke -- me@my-server:2222 -i C:\Users\me\.ssh\id_ed25519[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mPress Ctrl+] to quit.[m
+[32m+[m
+ ## Writing a plugin[m
+ [m
+ 1. Copy `samples/HelloPlugin`.[m
+[1mdiff --git a/RemoteDeck.slnx b/RemoteDeck.slnx[m
+[1mindex 06805f1..2c7a855 100644[m
+[1m--- a/RemoteDeck.slnx[m
+[1m+++ b/RemoteDeck.slnx[m
+[36m@@ -3,6 +3,10 @@[m
+     <Project Path="src/RemoteDeck.Plugin.Abstractions/RemoteDeck.Plugin.Abstractions.csproj" />[m
+     <Project Path="src/RemoteDeck.Core/RemoteDeck.Core.csproj" />[m
+     <Project Path="src/RemoteDeck.Vault/RemoteDeck.Vault.csproj" />[m
+[32m+[m[32m    <Project Path="src/RemoteDeck.Protocols.Ssh/RemoteDeck.Protocols.Ssh.csproj" />[m
+[32m+[m[32m  </Folder>[m
+[32m+[m[32m  <Folder Name="/tools/">[m
+[32m+[m[32m    <Project Path="tools/SshSmoke/SshSmoke.csproj" />[m
+   </Folder>[m
+   <Folder Name="/samples/">[m
+     <Project Path="samples/HelloPlugin/HelloPlugin.csproj" />[m
+[36m@@ -10,5 +14,6 @@[m
+   <Folder Name="/tests/">[m
+     <Project Path="tests/RemoteDeck.Core.Tests/RemoteDeck.Core.Tests.csproj" />[m
+     <Project Path="tests/RemoteDeck.Vault.Tests/RemoteDeck.Vault.Tests.csproj" />[m
+[32m+[m[32m    <Project Path="tests/RemoteDeck.Protocols.Ssh.Tests/RemoteDeck.Protocols.Ssh.Tests.csproj" />[m
+   </Folder>[m
+ </Solution>[m
