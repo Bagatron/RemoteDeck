@@ -1,0 +1,33 @@
+{
+  "$schema": "../schemas/theme.schema.json",
+  "name": "Dracula",
+  "author": "RemoteDeck contributors",
+  "base": "dark",
+  "backdrop": "acrylic",
+  "colors": {
+    "background": "#282A36",
+    "surface": "#343746",
+    "surfaceAlt": "#44475A",
+    "foreground": "#F8F8F2",
+    "mutedForeground": "#6272A4",
+    "accent": "#BD93F9",
+    "accentForeground": "#282A36",
+    "border": "#44475A",
+    "success": "#50FA7B",
+    "warning": "#F1FA8C",
+    "danger": "#FF5555",
+    "broadcast": "#FFB86C"
+  },
+  "terminal": {
+    "background": "#282A36",
+    "foreground": "#F8F8F2",
+    "cursor": "#F8F8F2",
+    "selection": "#44475A",
+    "ansi": [
+      "#21222C", "#FF5555", "#50FA7B", "#F1FA8C", "#BD93F9", "#FF79C6", "#8BE9FD", "#F8F8F2",
+      "#6272A4", "#FF6E6E", "#69FF94", "#FFFFA5", "#D6ACFF", "#FF92DF", "#A4FFFF", "#FFFFFF"
+    ]
+  },
+  "shape": { "cornerRadius": 10, "borderWidth": 1, "density": "comfortable" },
+  "font": { "ui": "Segoe UI Variable", "mono": "Cascadia Code", "size": 13 }
+}

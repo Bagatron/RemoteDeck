@@ -1,0 +1,33 @@
+{
+  "$schema": "../schemas/theme.schema.json",
+  "name": "Nord",
+  "author": "RemoteDeck contributors",
+  "base": "dark",
+  "backdrop": "mica",
+  "colors": {
+    "background": "#2E3440",
+    "surface": "#3B4252",
+    "surfaceAlt": "#434C5E",
+    "foreground": "#ECEFF4",
+    "mutedForeground": "#D8DEE9",
+    "accent": "#88C0D0",
+    "accentForeground": "#2E3440",
+    "border": "#4C566A",
+    "success": "#A3BE8C",
+    "warning": "#EBCB8B",
+    "danger": "#BF616A",
+    "broadcast": "#D08770"
+  },
+  "terminal": {
+    "background": "#2E3440",
+    "foreground": "#D8DEE9",
+    "cursor": "#D8DEE9",
+    "selection": "#434C5E",
+    "ansi": [
+      "#3B4252", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#88C0D0", "#E5E9F0",
+      "#4C566A", "#BF616A", "#A3BE8C", "#EBCB8B", "#81A1C1", "#B48EAD", "#8FBCBB", "#ECEFF4"
+    ]
+  },
+  "shape": { "cornerRadius": 8, "borderWidth": 1, "density": "comfortable" },
+  "font": { "ui": "Segoe UI Variable", "mono": "Cascadia Code", "size": 13 }
+}

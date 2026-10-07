@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Plugin.Abstractions</AssemblyName>
+    <RootNamespace>RemoteDeck.Plugin</RootNamespace>
+    <PackageId>RemoteDeck.Plugin.Abstractions</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Contracts for building RemoteDeck plugins: connection types, commands, and the credential broker.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

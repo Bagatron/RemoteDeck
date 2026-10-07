@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RemoteDeck workspace",
+  "description": "A saved arrangement of panes and connections. Broadcast is never saved as on.",
+  "type": "object",
+  "required": ["name", "layout"],
+  "additionalProperties": false,
+  "$defs": {
+    "pane": {
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pane" },
+        "id": { "type": "string", "minLength": 1, "description": "Unique within this workspace." },
+        "connectionId": { "type": "string", "description": "A saved connection to open in this pane." }
+      }
+    },
+    "split": {
+      "type": "object",
+      "required": ["type", "orientation", "ratio", "first", "second"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "split" },
+        "orientation": {
+          "enum": ["columns", "rows"],
+          "description": "columns = side by side, rows = stacked."
+        },
+        "ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1,
+          "description": "Share of the space given to 'first'."
+        },
+        "first": { "$ref": "#/$defs/node" },
+        "second": { "$ref": "#/$defs/node" }
+      }
+    },
+    "node": {
+      "oneOf": [{ "$ref": "#/$defs/pane" }, { "$ref": "#/$defs/split" }]
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "autoConnect": { "type": "boolean", "default": false },
+    "layout": { "$ref": "#/$defs/node" },
+    "broadcastMembers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" },
+      "description": "Pane ids pre-selected as the broadcast group. Broadcast itself always starts off."
+    }
+  }
+}

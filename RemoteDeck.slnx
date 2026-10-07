@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RemoteDeck.Plugin.Abstractions/RemoteDeck.Plugin.Abstractions.csproj" />
+    <Project Path="src/RemoteDeck.Core/RemoteDeck.Core.csproj" />
+    <Project Path="src/RemoteDeck.Vault/RemoteDeck.Vault.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/HelloPlugin/HelloPlugin.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RemoteDeck.Core.Tests/RemoteDeck.Core.Tests.csproj" />
+    <Project Path="tests/RemoteDeck.Vault.Tests/RemoteDeck.Vault.Tests.csproj" />
+  </Folder>
+</Solution>

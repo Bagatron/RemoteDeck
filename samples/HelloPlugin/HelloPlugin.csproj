@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>HelloPlugin</AssemblyName>
+    <RootNamespace>RemoteDeck.Samples.Hello</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Private=false: the host already ships the contracts, so the plugin must not carry its own copy. -->
+    <ProjectReference Include="..\..\src\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

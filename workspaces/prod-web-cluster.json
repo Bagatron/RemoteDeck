@@ -1,0 +1,26 @@
+{
+  "$schema": "../schemas/workspace.schema.json",
+  "name": "Prod web cluster",
+  "description": "Four web hosts in a 2x2 grid. Broadcast starts off; the four panes are only pre-selected as the group.",
+  "autoConnect": true,
+  "layout": {
+    "type": "split",
+    "orientation": "rows",
+    "ratio": 0.5,
+    "first": {
+      "type": "split",
+      "orientation": "columns",
+      "ratio": 0.5,
+      "first": { "type": "pane", "id": "p1", "connectionId": "web-01" },
+      "second": { "type": "pane", "id": "p2", "connectionId": "web-02" }
+    },
+    "second": {
+      "type": "split",
+      "orientation": "columns",
+      "ratio": 0.5,
+      "first": { "type": "pane", "id": "p3", "connectionId": "web-03" },
+      "second": { "type": "pane", "id": "p4", "connectionId": "web-04" }
+    }
+  },
+  "broadcastMembers": ["p1", "p2", "p3", "p4"]
+}

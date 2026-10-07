@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Core</AssemblyName>
+    <RootNamespace>RemoteDeck.Core</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RemoteDeck plugin manifest (plugin.json)",
+  "type": "object",
+  "required": ["id", "name", "version", "minHostApiVersion", "entryPoint"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.\\-]{1,62}[a-z0-9]$",
+      "description": "3-64 characters: lowercase letters, digits, '.' or '-'. Example: acme.proxmox"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.\\-]+)?$",
+      "description": "Semantic version of the plugin."
+    },
+    "minHostApiVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.\\-]+)?$",
+      "description": "Oldest RemoteDeck.Plugin.Abstractions version the plugin works with. Must share the host's major version."
+    },
+    "entryPoint": {
+      "type": "string",
+      "pattern": "^[^/\\\\]+\\.dll$",
+      "not": { "pattern": "\\.\\." },
+      "description": "Assembly file name inside the plugin folder (no paths)."
+    },
+    "author": { "type": "string" },
+    "description": { "type": "string" },
+    "license": { "type": "string" },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["network", "fileSystem", "useCredentials", "launchProcess"] },
+      "description": "Shown to the user before the plugin is enabled. 'useCredentials' lets the plugin request credentials through the broker; it never gets the vault."
+    }
+  }
+}

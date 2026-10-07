@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RemoteDeck theme",
+  "description": "A color, shape and font theme. Drop the file in the themes folder and it hot-reloads.",
+  "type": "object",
+  "required": ["name", "base", "colors"],
+  "additionalProperties": false,
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$",
+      "description": "Hex color: #RRGGBB or #RRGGBBAA."
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "author": { "type": "string" },
+    "base": {
+      "enum": ["dark", "light"],
+      "description": "Which built-in theme supplies anything this file leaves out."
+    },
+    "backdrop": {
+      "enum": ["none", "mica", "acrylic", "tabbed"],
+      "default": "mica",
+      "description": "Windows 11 window material. Falls back to a solid color where unsupported."
+    },
+    "colors": {
+      "type": "object",
+      "required": [
+        "background",
+        "surface",
+        "foreground",
+        "mutedForeground",
+        "accent",
+        "accentForeground",
+        "border",
+        "success",
+        "warning",
+        "danger",
+        "broadcast"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "background": { "$ref": "#/$defs/color" },
+        "surface": { "$ref": "#/$defs/color" },
+        "surfaceAlt": { "$ref": "#/$defs/color" },
+        "foreground": { "$ref": "#/$defs/color" },
+        "mutedForeground": { "$ref": "#/$defs/color" },
+        "accent": { "$ref": "#/$defs/color" },
+        "accentForeground": { "$ref": "#/$defs/color" },
+        "border": { "$ref": "#/$defs/color" },
+        "success": { "$ref": "#/$defs/color" },
+        "warning": { "$ref": "#/$defs/color" },
+        "danger": { "$ref": "#/$defs/color" },
+        "broadcast": {
+          "$ref": "#/$defs/color",
+          "description": "Border and banner color shown on panes that receive broadcast input. Keep it loud."
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": { "$ref": "#/$defs/color" },
+        "foreground": { "$ref": "#/$defs/color" },
+        "cursor": { "$ref": "#/$defs/color" },
+        "selection": { "$ref": "#/$defs/color" },
+        "ansi": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/color" },
+          "description": "The 16 ANSI colors: black, red, green, yellow, blue, magenta, cyan, white, then the bright versions."
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cornerRadius": { "type": "number", "minimum": 0, "maximum": 24, "default": 8 },
+        "borderWidth": { "type": "number", "minimum": 0, "maximum": 4, "default": 1 },
+        "density": { "enum": ["compact", "comfortable", "spacious"], "default": "comfortable" }
+      }
+    },
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ui": { "type": "string", "default": "Segoe UI Variable" },
+        "mono": { "type": "string", "default": "Cascadia Code" },
+        "size": { "type": "number", "minimum": 8, "maximum": 24, "default": 13 }
+      }
+    }
+  }
+}

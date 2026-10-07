@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schemas/plugin.schema.json",
+  "id": "sample.hello",
+  "name": "Hello (sample plugin)",
+  "version": "0.1.0",
+  "minHostApiVersion": "0.1.0",
+  "entryPoint": "HelloPlugin.dll",
+  "author": "RemoteDeck contributors",
+  "description": "Registers a palette command and a demo 'echo' terminal connection type.",
+  "license": "MIT",
+  "permissions": []
+}
