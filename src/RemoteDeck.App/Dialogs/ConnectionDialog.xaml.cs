@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
+using RemoteDeck.Plugin;
 
 namespace RemoteDeck.App.Dialogs;
 
@@ -11,6 +12,9 @@ public partial class ConnectionDialog : Window
     private sealed record FolderChoice(string? Id, string Label);
 
     private readonly ConnectionEntry? _existing;
+
+    /// <summary>Connection types provided by running plugins; offered next to SSH and RDP.</summary>
+    internal static IReadOnlyList<IConnectionFactory> ExtraTypes { get; set; } = Array.Empty<IConnectionFactory>();
 
     internal ConnectionDialog(ConnectionStore store, ConnectionEntry? existing, string? defaultFolderId)
     {
@@ -27,8 +31,22 @@ public partial class ConnectionDialog : Window
         var folderId = existing is null ? defaultFolderId : existing.FolderId;
         FolderBox.SelectedItem = choices.FirstOrDefault(c => c.Id == folderId) ?? choices[0];
 
-        TypeBox.SelectedIndex = existing?.Type == "rdp" ? 1 : 0;
-        TypeBox.IsEnabled = existing is null || existing.Type is "ssh" or "rdp";
+        foreach (var factory in ExtraTypes)
+        {
+            TypeBox.Items.Add(new ComboBoxItem { Content = factory.DisplayName, Tag = factory.Type });
+        }
+
+        var type = existing?.Type ?? "ssh";
+        var match = TypeBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == type);
+        if (match is null)
+        {
+            // A saved connection of a type whose plugin is not running: keep its type when editing.
+            match = new ComboBoxItem { Content = type + " (plugin not running)", Tag = type };
+            TypeBox.Items.Add(match);
+            TypeBox.IsEnabled = false;
+        }
+
+        TypeBox.SelectedItem = match;
 
         if (existing is not null)
         {
@@ -57,6 +75,10 @@ public partial class ConnectionDialog : Window
     private static string Option(ConnectionEntry entry, string key) =>
         entry.Options is not null && entry.Options.TryGetValue(key, out var value) ? value : string.Empty;
 
+    private string SelectedType => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "ssh";
+
+    private bool IsSsh => SelectedType == "ssh";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -66,7 +88,7 @@ public partial class ConnectionDialog : Window
             return;
         }
 
-        PortBox.ToolTip = IsRdp ? "Leave empty for 3389" : "Leave empty for 22";
+        PortBox.ToolTip = IsRdp ? "Leave empty for 3389" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -95,9 +117,9 @@ public partial class ConnectionDialog : Window
             name = host;
         }
 
-        if (host.Length == 0 || (!IsRdp && user.Length == 0))
+        if (host.Length == 0 || (IsSsh && user.Length == 0))
         {
-            Warn(IsRdp ? "A connection needs a host." : "A connection needs a host and a username.");
+            Warn(IsSsh ? "A connection needs a host and a username." : "A connection needs a host.");
             return;
         }
 
@@ -113,7 +135,7 @@ public partial class ConnectionDialog : Window
             port = parsed;
         }
 
-        var key = IsRdp ? string.Empty : KeyBox.Text.Trim();
+        var key = IsSsh ? KeyBox.Text.Trim() : string.Empty;
         var options = new Dictionary<string, string>(_existing?.Options ?? new Dictionary<string, string>());
         if (user.Length > 0)
         {
@@ -134,7 +156,7 @@ public partial class ConnectionDialog : Window
         }
 
         var hasSecret = PasswordBox.Password.Length > 0 || _existing?.CredentialId is not null;
-        if (!IsRdp && key.Length == 0 && !hasSecret)
+        if (IsSsh && key.Length == 0 && !hasSecret)
         {
             Warn("Enter a password, or choose a private key.");
             return;
@@ -143,7 +165,7 @@ public partial class ConnectionDialog : Window
         var folder = (FolderChoice?)FolderBox.SelectedItem;
         Result = (_existing ?? new ConnectionEntry(ConnectionStore.NewId(), name, "ssh", host)) with
         {
-            Type = IsRdp ? "rdp" : "ssh",
+            Type = SelectedType,
             Name = name,
             Host = host,
             Port = port,
