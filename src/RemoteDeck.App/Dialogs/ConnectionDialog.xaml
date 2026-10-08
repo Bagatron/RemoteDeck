@@ -5,7 +5,13 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{StaticResource Back}" Foreground="{StaticResource Text}">
     <StackPanel Margin="20">
-        <TextBlock Text="Name" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+        <TextBlock Text="Type" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+        <ComboBox x:Name="TypeBox" Padding="6,5" SelectionChanged="TypeBox_SelectionChanged">
+            <ComboBoxItem Content="SSH" Tag="ssh" />
+            <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
+        </ComboBox>
+
+        <TextBlock Text="Name" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <TextBox x:Name="NameBox" Padding="6,5" />
 
         <Grid Margin="0,12,0,0">

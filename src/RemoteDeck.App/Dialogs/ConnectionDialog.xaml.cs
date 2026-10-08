@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
 
@@ -25,6 +26,9 @@ public partial class ConnectionDialog : Window
 
         var folderId = existing is null ? defaultFolderId : existing.FolderId;
         FolderBox.SelectedItem = choices.FirstOrDefault(c => c.Id == folderId) ?? choices[0];
+
+        TypeBox.SelectedIndex = existing?.Type == "rdp" ? 1 : 0;
+        TypeBox.IsEnabled = existing is null || existing.Type is "ssh" or "rdp";
 
         if (existing is not null)
         {
@@ -53,6 +57,18 @@ public partial class ConnectionDialog : Window
     private static string Option(ConnectionEntry entry, string key) =>
         entry.Options is not null && entry.Options.TryGetValue(key, out var value) ? value : string.Empty;
 
+    private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
+
+    private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PortBox is null)
+        {
+            return;
+        }
+
+        PortBox.ToolTip = IsRdp ? "Leave empty for 3389" : "Leave empty for 22";
+    }
+
     private void Browse_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
@@ -79,9 +95,9 @@ public partial class ConnectionDialog : Window
             name = host;
         }
 
-        if (host.Length == 0 || user.Length == 0)
+        if (host.Length == 0 || (!IsRdp && user.Length == 0))
         {
-            Warn("A connection needs a host and a username.");
+            Warn(IsRdp ? "A connection needs a host." : "A connection needs a host and a username.");
             return;
         }
 
@@ -97,11 +113,16 @@ public partial class ConnectionDialog : Window
             port = parsed;
         }
 
-        var key = KeyBox.Text.Trim();
-        var options = new Dictionary<string, string>(_existing?.Options ?? new Dictionary<string, string>())
+        var key = IsRdp ? string.Empty : KeyBox.Text.Trim();
+        var options = new Dictionary<string, string>(_existing?.Options ?? new Dictionary<string, string>());
+        if (user.Length > 0)
         {
-            ["username"] = user,
-        };
+            options["username"] = user;
+        }
+        else
+        {
+            options.Remove("username");
+        }
 
         if (key.Length > 0)
         {
@@ -113,7 +134,7 @@ public partial class ConnectionDialog : Window
         }
 
         var hasSecret = PasswordBox.Password.Length > 0 || _existing?.CredentialId is not null;
-        if (key.Length == 0 && !hasSecret)
+        if (!IsRdp && key.Length == 0 && !hasSecret)
         {
             Warn("Enter a password, or choose a private key.");
             return;
@@ -122,6 +143,7 @@ public partial class ConnectionDialog : Window
         var folder = (FolderChoice?)FolderBox.SelectedItem;
         Result = (_existing ?? new ConnectionEntry(ConnectionStore.NewId(), name, "ssh", host)) with
         {
+            Type = IsRdp ? "rdp" : "ssh",
             Name = name,
             Host = host,
             Port = port,
@@ -129,7 +151,8 @@ public partial class ConnectionDialog : Window
             Options = options,
             Favorite = FavoriteBox.IsChecked == true
         };
-        Password = PasswordBox.Password;
+        // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
+        Password = IsRdp ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 
