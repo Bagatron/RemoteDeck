@@ -1,0 +1,27 @@
+<Window x:Class="RemoteDeck.App.Dialogs.PluginsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Plugins" Width="760" Height="440" MinWidth="520" MinHeight="300"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource Back}" Foreground="{DynamicResource Text}">
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}" Margin="0,0,0,10"
+                   Text="Plugins run inside RemoteDeck with your user account's access. Turn on only ones you trust. Each plugin lists what it asks for; you approve that when you turn it on." />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="ToggleButton" Content="Turn on" Padding="14,5" Click="Toggle_Click" IsEnabled="False" />
+            <Button Content="Refresh" Padding="14,5" Margin="8,0,0,0" Click="Refresh_Click" />
+            <Button Content="Open plugins folder" Padding="14,5" Margin="8,0,0,0" Click="Folder_Click" />
+        </StackPanel>
+        <ListView x:Name="List" SelectionChanged="List_SelectionChanged"
+                  Background="{DynamicResource Panel}" Foreground="{DynamicResource Text}" BorderBrush="{DynamicResource Line}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Plugin" Width="200" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="Version" Width="70" DisplayMemberBinding="{Binding Version}" />
+                    <GridViewColumn Header="Asks for" Width="150" DisplayMemberBinding="{Binding Permissions}" />
+                    <GridViewColumn Header="Status" Width="280" DisplayMemberBinding="{Binding Status}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>

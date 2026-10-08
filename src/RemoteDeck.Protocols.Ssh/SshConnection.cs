@@ -16,6 +16,7 @@ public sealed class SshConnection : ITerminalConnection
     private readonly ICredentialBroker _credentials;
     private readonly ISshSessionFactory _sessions;
     private readonly HostKeyVerifier _hostKeys;
+    private readonly Func<string, ConnectionDefinition?>? _resolveJump;
     private readonly TerminalOutput _output = new();
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private readonly object _stateGate = new();
@@ -31,7 +32,8 @@ public sealed class SshConnection : ITerminalConnection
         ConnectionDefinition definition,
         ICredentialBroker credentials,
         ISshSessionFactory sessions,
-        HostKeyVerifier hostKeys)
+        HostKeyVerifier hostKeys,
+        Func<string, ConnectionDefinition?>? resolveJump = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(credentials);
@@ -42,6 +44,7 @@ public sealed class SshConnection : ITerminalConnection
         _credentials = credentials;
         _sessions = sessions;
         _hostKeys = hostKeys;
+        _resolveJump = resolveJump;
     }
 
     public string Id => _definition.Id;
@@ -56,6 +59,12 @@ public sealed class SshConnection : ITerminalConnection
             }
         }
     }
+
+    /// <summary>
+    /// True when the last session ended because the connection was lost (network down, server gone), false when the
+    /// shell simply ended, you closed it, or it never connected. Used to decide whether to reconnect.
+    /// </summary>
+    public bool DroppedUnexpectedly { get; private set; }
 
     public event EventHandler<ConnectionState>? StateChanged;
 
@@ -72,6 +81,7 @@ public sealed class SshConnection : ITerminalConnection
             }
 
             _hostKeyRejected = false;
+            DroppedUnexpectedly = false;
             SetState(ConnectionState.Connecting);
             try
             {
@@ -199,19 +209,28 @@ public sealed class SshConnection : ITerminalConnection
                 "No password or private key is set for this connection. Save a credential, or set 'privateKeyPath'.");
         }
 
-        var request = new SshConnectRequest
-        {
-            Host = options.Host,
-            Port = options.Port,
-            Username = username,
-            Secret = hasSecret ? secret : null,
-            PrivateKeyPath = options.PrivateKeyPath,
-            ConnectTimeout = options.ConnectTimeout,
-            KeepAlive = options.KeepAlive,
-            VerifyHostKey = VerifyHostKey,
-        };
-
-        var session = await _sessions.ConnectAsync(request, cancellationToken).ConfigureAwait(false);
+        var session = await JumpHosts.WithJumpAsync<ISshSession>(
+            options,
+            _definition.Id,
+            _resolveJump,
+            _credentials,
+            VerifyHostKey,
+            jump => _sessions.ConnectAsync(
+                new SshConnectRequest
+                {
+                    Host = options.Host,
+                    Port = options.Port,
+                    Username = username,
+                    Secret = hasSecret ? secret : null,
+                    PrivateKeyPath = options.PrivateKeyPath,
+                    ConnectTimeout = options.ConnectTimeout,
+                    KeepAlive = options.KeepAlive,
+                    VerifyHostKey = VerifyHostKey,
+                    Jump = jump,
+                    Forwards = options.Forwards ?? Array.Empty<PortForward>(),
+                },
+                cancellationToken),
+            cancellationToken).ConfigureAwait(false);
         _session = session;
 
         var shell = session.OpenShell(options.Terminal, _columns, _rows);
@@ -257,6 +276,7 @@ public sealed class SshConnection : ITerminalConnection
 
     private void OnShellClosed(object? sender, EventArgs e)
     {
+        DroppedUnexpectedly = (sender as ISshShell)?.Faulted ?? false;
         Cleanup();
         TrySetState(ConnectionState.Connected, ConnectionState.Disconnected);
     }

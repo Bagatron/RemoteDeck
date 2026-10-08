@@ -34,6 +34,49 @@ public class SshConnectionTests
         return setup;
     }
 
+    // ---- dropped or ended ----
+
+    [Fact]
+    public async Task ALostConnection_IsReportedAsDropped()
+    {
+        var setup = WithCredential();
+        await using var connection = setup.Create(Definition());
+        await connection.ConnectAsync();
+
+        setup.Sessions.Session.Shell.Faulted = true;
+        setup.Sessions.Session.Shell.RemoteClose();
+
+        Assert.True(connection.DroppedUnexpectedly);
+        Assert.Equal(ConnectionState.Disconnected, connection.State);
+    }
+
+    [Fact]
+    public async Task TypingExit_IsNotADrop()
+    {
+        var setup = WithCredential();
+        await using var connection = setup.Create(Definition());
+        await connection.ConnectAsync();
+
+        setup.Sessions.Session.Shell.RemoteClose();
+
+        Assert.False(connection.DroppedUnexpectedly);
+    }
+
+    [Fact]
+    public async Task ConnectingAgain_ClearsTheDroppedFlag()
+    {
+        var setup = WithCredential();
+        await using var connection = setup.Create(Definition());
+        await connection.ConnectAsync();
+        setup.Sessions.Session.Shell.Faulted = true;
+        setup.Sessions.Session.Shell.RemoteClose();
+
+        setup.Sessions.NextSession();
+        await connection.ConnectAsync();
+
+        Assert.False(connection.DroppedUnexpectedly);
+    }
+
     // ---- connecting ----
 
     [Fact]

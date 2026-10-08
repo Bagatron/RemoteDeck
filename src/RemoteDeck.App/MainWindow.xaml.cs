@@ -12,8 +12,10 @@ using RemoteDeck.App.Sftp;
 using RemoteDeck.App.Terminals;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
+using RemoteDeck.Core.Logging;
 using RemoteDeck.Core.Import;
 using RemoteDeck.Core.Layout;
+using RemoteDeck.Core.Plugins;
 using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
 using RemoteDeck.Protocols.Ssh;
@@ -26,6 +28,7 @@ public partial class MainWindow : Window
     private readonly AppData _data;
     private readonly TerminalHost _terminals;
     private readonly SshConnectionFactory _ssh;
+    private readonly PluginManager _plugins;
 
     internal MainWindow(AppData data)
     {
@@ -35,7 +38,10 @@ public partial class MainWindow : Window
 
         Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
         _terminals = new TerminalHost(Web);
-        _ssh = new SshConnectionFactory(new FileHostKeyStore(AppPaths.KnownHosts), new DialogHostKeyPrompt(Dispatcher, () => this));
+        _ssh = new SshConnectionFactory(
+            new FileHostKeyStore(AppPaths.KnownHosts),
+            new DialogHostKeyPrompt(Dispatcher, () => this),
+            id => _data.Store.ResolveDefinition(id));
 
         _terminals.Input += OnTerminalInput;
         _terminals.Pasted += OnTerminalPasted;
@@ -47,6 +53,13 @@ public partial class MainWindow : Window
         RefreshTree();
 
         App.Themes.Applied += OnThemeApplied;
+
+        _plugins = new PluginManager(
+            App.Settings,
+            new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor),
+            text => Dispatcher.InvokeAsync(() => SetStatus(text)));
+        _plugins.Changed += () => ConnectionDialog.ExtraTypes = _plugins.Host.ConnectionTypes.ToList();
+        _plugins.Start();
         _terminals.Shortcut += combo => Dispatcher.InvokeAsync(() => RunShortcut(combo));
         PreviewKeyDown += OnWindowKeyDown;
 
@@ -71,6 +84,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             App.Themes.Applied -= OnThemeApplied;
+            _plugins.Dispose();
 
             foreach (var tab in Tabs.ToArray())
             {
@@ -87,6 +101,24 @@ public partial class MainWindow : Window
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+
+    // ---- plugins ----
+
+    private void ShowPlugins() => new PluginsWindow(this, _plugins).ShowDialog();
+
+    private void Plugins_Click(object sender, RoutedEventArgs e) => ShowPlugins();
+
+    private async Task RunPluginCommandAsync(PluginCommand command)
+    {
+        try
+        {
+            await command.Execute(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Plugin command \"{command.Title}\" failed: {ex.Message}");
+        }
+    }
 
     // ---- workspaces ----
 
@@ -156,13 +188,14 @@ public partial class MainWindow : Window
             }
 
             var definition = _data.Store.ResolveDefinition(entry.Id);
-            if (definition is null || !string.Equals(entry.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+            var factory = FactoryFor(entry.Type);
+            if (definition is null || factory is null)
             {
                 continue;
             }
 
             var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
-            _ = ConnectPaneAsync(tab, session, definition, broker, entry.Name, members.Contains(pane.Id));
+            _ = ConnectPaneAsync(tab, session, factory, definition, broker, entry.Name, members.Contains(pane.Id));
         }
 
         SyncTab(tab);
@@ -338,7 +371,9 @@ public partial class MainWindow : Window
             new("Search connections", "Ctrl+Shift+F", () => RunShortcut("ctrl+shift+f")),
             new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
+            new("Open session logs folder", string.Empty, OpenLogsFolder),
             new("Reload themes", string.Empty, () => App.Themes.Reload()),
+            new("Plugins...", string.Empty, ShowPlugins),
         };
 
         foreach (var preset in Enum.GetNames<LayoutPreset>())
@@ -348,6 +383,12 @@ public partial class MainWindow : Window
                 "Layout: " + System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", " "),
                 string.Empty,
                 () => Preset_Click(new MenuItem { Tag = name }, new RoutedEventArgs())));
+        }
+
+        foreach (var command in _plugins.Host.Commands.ToList())
+        {
+            var captured = command;
+            actions.Add(new PaletteItem("Plugin: " + captured.Title, captured.DefaultKeybinding ?? string.Empty, () => _ = RunPluginCommandAsync(captured)));
         }
 
         foreach (var file in Library.LoadAll().Where(f => f.Workspace is not null))
@@ -801,7 +842,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenLogsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.Logs);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{AppPaths.Logs}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(this, ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     // ---- opening sessions ----
+
+    /// <summary>The factory for a terminal connection type: SSH, or one a running plugin provides.</summary>
+    private IConnectionFactory? FactoryFor(string type) =>
+        string.Equals(type, "ssh", StringComparison.OrdinalIgnoreCase)
+            ? _ssh
+            : _plugins.Host.ConnectionTypes.FirstOrDefault(f => string.Equals(f.Type, type, StringComparison.OrdinalIgnoreCase));
 
     private Task OpenSavedAsync(ConnectionEntry entry, bool newTab = false)
     {
@@ -811,9 +871,15 @@ public partial class MainWindow : Window
             return Task.CompletedTask;
         }
 
-        if (!string.Equals(entry.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+        var factory = FactoryFor(entry.Type);
+        if (factory is null)
         {
-            MessageBox.Show(this, $"\"{entry.Type}\" connections are not supported yet. Only SSH is.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                this,
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH and RDP. Other types come from plugins, which may be turned off (see Plugins).",
+                "RemoteDeck",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             return Task.CompletedTask;
         }
 
@@ -824,7 +890,7 @@ public partial class MainWindow : Window
         }
 
         var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
-        return StartSessionAsync(definition, broker, entry.Name, newTab);
+        return StartSessionAsync(definition, broker, entry.Name, newTab, factory);
     }
 
     /// <summary>Opens the connection in the Windows Remote Desktop client. It asks for the password itself, so none is passed on.</summary>
@@ -893,7 +959,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Opens a session in an empty pane of the current tab (the focused one first), or in a new tab if there is none.</summary>
-    private async Task StartSessionAsync(ConnectionDefinition definition, ICredentialBroker broker, string title, bool newTab)
+    private async Task StartSessionAsync(ConnectionDefinition definition, ICredentialBroker broker, string title, bool newTab, IConnectionFactory? factory = null)
     {
         WorkspaceTab tab;
         PaneSession pane;
@@ -909,19 +975,110 @@ public partial class MainWindow : Window
             pane = tab.Sessions[0];
         }
 
-        await ConnectPaneAsync(tab, pane, definition, broker, title, member: false);
+        await ConnectPaneAsync(tab, pane, factory ?? _ssh, definition, broker, title, member: false);
     }
 
     /// <summary>Starts an SSH session in a specific pane and wires its output, state and broadcast membership.</summary>
-    private async Task ConnectPaneAsync(
+    /// <summary>Starts a log file when the connection has "Log session output" turned on. Failing to log never stops the session.</summary>
+    private SessionLog? OpenSessionLog(ConnectionDefinition definition, PaneSession pane)
+    {
+        if (definition.Options is null
+            || !definition.Options.TryGetValue("logSession", out var flag)
+            || !string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        try
+        {
+            var log = SessionLog.Open(AppPaths.Logs, definition.Name, DateTimeOffset.Now);
+            Write(pane, $"\u001b[2m[logging to {log.Path}]\u001b[0m\r\n");
+            return log;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Write(pane, $"\u001b[33mCould not start the session log: {ex.Message}\u001b[0m\r\n");
+            return null;
+        }
+    }
+
+    private enum ConnectOutcome
+    {
+        Connected,
+        CouldNotConnect,
+
+        /// <summary>Trying again would not help (wrong password, rejected host key, bad settings).</summary>
+        GaveUp,
+    }
+
+    private static bool WantsAutoReconnect(ConnectionDefinition definition) =>
+        definition.Options is not null
+        && definition.Options.TryGetValue("autoReconnect", out var flag)
+        && string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// After a connection drops, tries again with growing pauses. It stops as soon as the pane is closed or reused,
+    /// when a retry could not help (wrong password, host key refused), or after <see cref="ReconnectPolicy.MaxAttempts"/> attempts.
+    /// </summary>
+    private async Task ReconnectAsync(
         WorkspaceTab tab,
         PaneSession pane,
+        IConnectionFactory factory,
+        ConnectionDefinition definition,
+        ICredentialBroker broker,
+        string title,
+        ITerminalConnection dropped)
+    {
+        var previous = dropped;
+        for (var attempt = 1; attempt <= ReconnectPolicy.MaxAttempts; attempt++)
+        {
+            var delay = ReconnectPolicy.Delay(attempt);
+            Write(pane, $"\u001b[2m[reconnecting in {(int)delay.TotalSeconds}s, attempt {attempt} of {ReconnectPolicy.MaxAttempts}; close the pane to stop]\u001b[0m\r\n");
+            await Task.Delay(delay);
+
+            if (pane.Connection != previous)
+            {
+                return;
+            }
+
+            var member = tab.Router.Members.Contains(pane.TerminalId);
+            var old = previous;
+            _ = Task.Run(async () => await old.DisposeAsync());
+
+            var outcome = await ConnectPaneAsync(tab, pane, factory, definition, broker, title, member);
+            if (outcome == ConnectOutcome.Connected)
+            {
+                return;
+            }
+
+            if (outcome == ConnectOutcome.GaveUp || pane.Connection is null)
+            {
+                return;
+            }
+
+            previous = pane.Connection;
+        }
+
+        Write(pane, "\u001b[33m[gave up reconnecting]\u001b[0m\r\n");
+    }
+
+    private async Task<ConnectOutcome> ConnectPaneAsync(
+        WorkspaceTab tab,
+        PaneSession pane,
+        IConnectionFactory factory,
         ConnectionDefinition definition,
         ICredentialBroker broker,
         string title,
         bool member)
     {
-        var connection = (ITerminalConnection)_ssh.Create(definition, broker);
+        var created = factory.Create(definition, broker);
+        if (created is not ITerminalConnection connection)
+        {
+            await created.DisposeAsync();
+            MessageBox.Show(this, $"\"{definition.Type}\" connections can't open in a terminal pane.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+            return ConnectOutcome.GaveUp;
+        }
+
         pane.ConnectionId = _data.Store.FindConnection(definition.Id) is null ? null : definition.Id;
         pane.Connection = connection;
         pane.Title = title;
@@ -934,8 +1091,17 @@ public partial class MainWindow : Window
 
         tab.FocusedTerminalId = pane.TerminalId;
 
+        var log = OpenSessionLog(definition, pane);
+        var wasConnected = false;
+        var reconnecting = WantsAutoReconnect(definition);
+
         connection.StateChanged += (_, state) => Dispatcher.InvokeAsync(() =>
         {
+            if (state is ConnectionState.Disconnected or ConnectionState.Failed)
+            {
+                log?.Dispose();
+            }
+
             if (pane.Connection != connection)
             {
                 return;
@@ -943,19 +1109,37 @@ public partial class MainWindow : Window
 
             pane.State = state;
             SyncTab(tab);
+            if (state == ConnectionState.Connected)
+            {
+                wasConnected = true;
+            }
+
             if (state == ConnectionState.Disconnected)
             {
                 Write(pane, "\r\n\u001b[2m[connection closed]\u001b[0m\r\n");
+
+                // Only a connection that was up and then dropped is retried. Typing "exit", closing the pane, or a
+                // connection that never came up are not drops.
+                if (reconnecting && wasConnected && connection is SshConnection { DroppedUnexpectedly: true })
+                {
+                    _ = ReconnectAsync(tab, pane, factory, definition, broker, title, connection);
+                }
             }
         });
 
-        connection.Output.Subscribe(new DelegateObserver(data => Dispatcher.InvokeAsync(() =>
-        {
-            if (pane.Connection == connection)
+        connection.Output.Subscribe(new DelegateObserver(
+            data =>
             {
-                _terminals.Output(pane.TerminalId, data);
-            }
-        })));
+                log?.Write(data);
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (pane.Connection == connection)
+                    {
+                        _terminals.Output(pane.TerminalId, data);
+                    }
+                });
+            },
+            () => log?.Dispose()));
 
         connection.Resize(pane.Columns, pane.Rows);
         SyncTab(tab);
@@ -965,18 +1149,22 @@ public partial class MainWindow : Window
         {
             // Off the UI thread: the host-key question blocks the connecting thread until you answer it.
             await Task.Run(() => connection.ConnectAsync().AsTask());
+            return ConnectOutcome.Connected;
         }
         catch (SshConnectionException ex)
         {
             Write(pane, $"\r\n\u001b[31m{ex.Message}\u001b[0m\r\n");
+            return ex.Transient ? ConnectOutcome.CouldNotConnect : ConnectOutcome.GaveUp;
         }
         catch (Exception ex) when (ex is VaultException or KeyNotFoundException)
         {
             Write(pane, $"\r\n\u001b[31mCould not read the saved password: {ex.Message}\u001b[0m\r\n");
+            return ConnectOutcome.GaveUp;
         }
         catch (Exception ex)
         {
             Write(pane, $"\r\n\u001b[31mUnexpected error: {ex.Message}\u001b[0m\r\n");
+            return ConnectOutcome.GaveUp;
         }
     }
 

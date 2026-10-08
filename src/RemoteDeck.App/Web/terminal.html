@@ -55,6 +55,20 @@
                  text-align: center; color: var(--dim); line-height: 1.7; pointer-events: none; }
   .pane.empty .placeholder { display: flex; }
   .pane.empty .xt { visibility: hidden; }
+
+  .find { position: absolute; top: 6px; right: 14px; z-index: 6; display: none; align-items: center; gap: 2px;
+          padding: 3px; background: var(--panel); border: var(--bw) solid var(--line);
+          border-radius: calc(var(--radius) * 0.6); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .pane.finding .find { display: flex; }
+  .find input { width: 150px; background: var(--bg); color: var(--text); border: var(--bw) solid var(--line);
+                border-radius: calc(var(--radius) * 0.4); padding: 3px 6px; font: inherit; outline: none; }
+  .find input:focus { border-color: var(--accent); }
+  .find input.nomatch { border-color: var(--danger); }
+  .find button { background: none; border: 0; color: var(--dim); padding: 3px 5px; cursor: pointer;
+                 border-radius: calc(var(--radius) * 0.4); font: inherit; }
+  .find button:hover { color: var(--text); background: var(--alt); }
+  .find button.on { color: var(--accent); }
+  .find .count { color: var(--dim); min-width: 52px; text-align: center; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -62,6 +76,7 @@
 <div id="empty">Double-click a saved connection, or use Quick connect.</div>
 <script src="xterm.js"></script>
 <script src="addon-fit.js"></script>
+<script src="addon-search.js"></script>
 <script>
 (() => {
   "use strict";
@@ -90,6 +105,9 @@
     cast: '<svg viewBox="0 0 12 12" width="12" height="12"><circle cx="6" cy="6" r="1.6" fill="currentColor"/><path d="M3.3 3.3a3.8 3.8 0 0 0 0 5.4M8.7 3.3a3.8 3.8 0 0 1 0 5.4" stroke="currentColor" fill="none"/></svg>',
     right: '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor"/><line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor"/></svg>',
     down: '<svg viewBox="0 0 12 12" width="12" height="12"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor"/></svg>',
+    find: '<svg viewBox="0 0 12 12" width="12" height="12"><circle cx="5" cy="5" r="3.2" fill="none" stroke="currentColor"/><line x1="7.5" y1="7.5" x2="10.5" y2="10.5" stroke="currentColor"/></svg>',
+    up: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" fill="none"/></svg>',
+    downArrow: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" fill="none"/></svg>',
     close: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" fill="none"/></svg>'
   };
 
@@ -131,11 +149,18 @@
     el.className = "pane empty";
     el.innerHTML =
       '<div class="hdr"><span class="dot"></span><span class="title"></span><span class="spacer"></span>' +
+      '<button data-a="find" title="Find in scrollback (Ctrl+Shift+S)">' + ICON.find + '</button>' +
       '<button data-a="member" title="Include in broadcast group">' + ICON.cast + '</button>' +
       '<button data-a="splitRight" title="Split right">' + ICON.right + '</button>' +
       '<button data-a="splitDown" title="Split down">' + ICON.down + '</button>' +
       '<button data-a="close">' + ICON.close + '</button></div>' +
       '<div class="body"><div class="xt"></div>' +
+      '<div class="find"><input type="text" placeholder="Find" spellcheck="false">' +
+      '<span class="count"></span>' +
+      '<button data-f="case" title="Match case">Aa</button>' +
+      '<button data-f="prev" title="Previous (Shift+Enter)">' + ICON.up + '</button>' +
+      '<button data-f="next" title="Next (Enter)">' + ICON.downArrow + '</button>' +
+      '<button data-f="close" title="Close (Esc)">' + ICON.close + '</button></div>' +
       '<div class="placeholder"><div>Empty pane<br>Double-click a saved connection to open it here</div></div></div>';
 
     const body = el.querySelector(".body");
@@ -146,10 +171,13 @@
       fontSize: termFont.size,
       cursorBlink: true,
       scrollback: 10000,
+      allowProposedApi: true,   // the find bar highlights matches with decorations
       theme: termTheme
     });
     const fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
+    const search = new SearchAddon.SearchAddon();
+    term.loadAddon(search);
 
     term.onData((data) => post({ t: "in", id, b64: toBase64(encoder.encode(data)) }));
     term.onBinary((data) => {
@@ -163,6 +191,11 @@
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown" || !e.ctrlKey || e.altKey) return true;
       const key = e.key.toLowerCase();
+      if (key === "s" && e.shiftKey) {
+        e.preventDefault();
+        openFind(id);
+        return false;
+      }
       if (key === "c" && (e.shiftKey || term.hasSelection())) {
         e.preventDefault();
         if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {});
@@ -183,13 +216,17 @@
 
     el.querySelector(".hdr").addEventListener("click", (e) => {
       const button = e.target.closest("button");
-      if (button) post({ t: "action", id, a: button.dataset.a });
+      if (!button) return;
+      if (button.dataset.a === "find") openFind(id);
+      else post({ t: "action", id, a: button.dataset.a });
     });
+    wireFind(id, el, term, search);
     el.addEventListener("mousedown", () => setFocus(id));
     el.addEventListener("focusin", () => setFocus(id));
 
     const pane = {
-      tabId, id, el, body, term, fit,
+      tabId, id, el, body, term, fit, search,
+      find: { input: el.querySelector(".find input"), count: el.querySelector(".find .count"), matchCase: false },
       xt: el.querySelector(".xt"),
       dot: el.querySelector(".dot"),
       title: el.querySelector(".title"),
@@ -199,6 +236,85 @@
     panes.set(id, pane);
     observer.observe(body);
     return pane;
+  }
+
+  // ---- find in scrollback ----
+
+  const FIND_COLORS = {
+    matchBackground: "#5b6573", matchBorder: "#88c0d0",
+    activeMatchBackground: "#d08770", activeMatchBorder: "#ebcb8b",
+    matchOverviewRuler: "#88c0d0", activeMatchColorOverviewRuler: "#d08770"
+  };
+
+  function runFind(pane, forward, incremental) {
+    const query = pane.find.input.value;
+    if (!query) {
+      pane.search.clearDecorations();
+      pane.find.count.textContent = "";
+      pane.find.input.classList.remove("nomatch");
+      return;
+    }
+    const options = { caseSensitive: pane.find.matchCase, incremental: !!incremental, decorations: FIND_COLORS };
+    const found = forward ? pane.search.findNext(query, options) : pane.search.findPrevious(query, options);
+    pane.find.input.classList.toggle("nomatch", !found);
+    if (!found) pane.find.count.textContent = "No match";
+  }
+
+  function openFind(id) {
+    const pane = panes.get(id);
+    if (!pane || pane.el.classList.contains("empty")) return;
+    pane.el.classList.add("finding");
+    const selected = pane.term.hasSelection() ? pane.term.getSelection() : "";
+    if (selected && !selected.includes("\n")) pane.find.input.value = selected;
+    pane.find.input.focus();
+    pane.find.input.select();
+    if (pane.find.input.value) runFind(pane, true, true);
+  }
+
+  function closeFind(pane) {
+    pane.el.classList.remove("finding");
+    pane.search.clearDecorations();
+    pane.find.count.textContent = "";
+    pane.find.input.classList.remove("nomatch");
+    pane.term.focus();
+  }
+
+  function wireFind(id, el, term, search) {
+    const input = el.querySelector(".find input");
+    const count = el.querySelector(".find .count");
+    // The pane record is created just after this runs, so look it up when it is needed.
+    const pane = () => panes.get(id);
+
+    search.onDidChangeResults((r) => {
+      if (!r || r.resultCount === undefined) return;
+      count.textContent = r.resultCount === 0 ? "No match"
+        : (r.resultIndex >= 0 ? (r.resultIndex + 1) + " / " : "") + r.resultCount + (r.resultCount >= 1000 ? "+" : "");
+    });
+
+    input.addEventListener("input", () => { const p = pane(); if (p) runFind(p, true, true); });
+    input.addEventListener("keydown", (e) => {
+      const p = pane();
+      if (!p) return;
+      if (e.key === "Escape") { e.preventDefault(); closeFind(p); }
+      else if (e.key === "Enter") { e.preventDefault(); runFind(p, !e.shiftKey, false); }
+      else if (e.key === "F3") { e.preventDefault(); runFind(p, !e.shiftKey, false); }
+      e.stopPropagation();
+    });
+    el.querySelector(".find").addEventListener("click", (e) => {
+      const button = e.target.closest("button");
+      const p = pane();
+      if (!button || !p) return;
+      const what = button.dataset.f;
+      if (what === "close") closeFind(p);
+      else if (what === "next") runFind(p, true, false);
+      else if (what === "prev") runFind(p, false, false);
+      else if (what === "case") {
+        p.find.matchCase = !p.find.matchCase;
+        button.classList.toggle("on", p.find.matchCase);
+        p.search.clearDecorations();   // forgets the last search, so the changed option is not skipped as "same query"
+        runFind(p, true, true);
+      }
+    });
   }
 
   function destroyPane(id) {
@@ -405,6 +521,14 @@
   ]);
   document.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
+    // Find is handled here, in the page, so it works wherever focus is inside it.
+    if (e.shiftKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      e.stopPropagation();
+      const tab = tabs.get(activeTab);
+      if (tab && tab.focused) openFind(tab.focused);
+      return;
+    }
     const combo = "ctrl+" + (e.shiftKey ? "shift+" : "") + e.key.toLowerCase();
     if (!shortcuts.has(combo)) return;
     e.preventDefault();

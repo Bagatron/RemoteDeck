@@ -13,6 +13,8 @@ internal sealed class FakeShell : ISshShell
 
     public bool Disposed { get; private set; }
 
+    public bool Faulted { get; set; }
+
     public event EventHandler<byte[]>? DataReceived;
 
     public event EventHandler? Closed;

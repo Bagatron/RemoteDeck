@@ -117,7 +117,7 @@ Applied today: interface colors, terminal colors (background, cursor, selection,
 
 ## Importing
 
-`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, `ProxyJump`, wildcard hosts) is listed in a note when the import finishes.
+`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, a `ProxyJump` it cannot link, `ProxyCommand`, wildcard hosts) is listed in a note when the import finishes.
 
 ## Running the app
 
@@ -135,6 +135,9 @@ The first start asks you to create a master password; after that it asks for it 
 - **Files (SFTP):** right-click an SSH connection, `Browse files (SFTP)` (or type `sftp` and a name in the palette). A file window opens for the same server, with the same saved password and host-key check. Double-click a folder to open it; `Upload files...`, `Upload folder...`, drag files in from Explorer, `Download`, `New folder`, `Rename`, `Delete` (folders are deleted with their contents, after a confirmation). Transfers can be cancelled.
 - **Workspaces:** open a tab the way you like it (layout, connections in their panes, which panes are in the broadcast group), then `Workspaces`, `Save current tab as workspace...` (or the same command in the palette). Opening a saved workspace puts it in a new tab and connects every pane. Broadcast always starts off. Workspaces are plain JSON files in `%LOCALAPPDATA%\RemoteDeck\workspaces` (see `workspaces/` for examples and `schemas/` for the format); they refer to connections by id, so a connection you deleted is reported and left out.
 - **Command palette:** `Ctrl+Shift+P` searches saved connections and actions (new tab, layouts, broadcast, themes, import). Type, arrow keys, Enter.
+- **Auto-reconnect:** tick **Reconnect automatically if the connection drops** in an SSH connection's dialog. If the network or server drops an established session, RemoteDeck waits 2, 4, 8, 16 and then 30 seconds between up to 8 attempts, keeping the pane and its scrollback. It does not retry after you type `exit` or close the pane, or when the password is wrong or the host key is refused (retrying a wrong password could lock the account).
+- **Session logs:** tick **Log session output to a file** in an SSH connection's dialog and each session is saved as plain text (colors and escape sequences removed; backspaces and progress bars collapse to what you saw) in `%LOCALAPPDATA%\RemoteDeck\logs`, named after the connection and the time. Only what the server prints is logged, not what you type, but anything shown on screen is, so treat the folder like the sessions themselves. `Ctrl+Shift+P`, `logs` opens the folder.
+- **Find in scrollback:** the magnifier in a pane's header, or `Ctrl+Shift+S` with the pane focused. Matches are highlighted as you type; `Enter` / `Shift+Enter` (or `F3`) step through them, `Aa` matches case, `Esc` closes. (Plain `Ctrl+F` is left to the shell, where it moves the cursor.)
 - **Shortcuts:** `Ctrl+Shift+T` new tab, `Ctrl+Shift+W` close tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Ctrl+Shift+B` broadcast on/off, `Ctrl+Shift+F` search connections. Plain Ctrl+letter keys always go to the shell.
 - **Terminal:** Ctrl+C copies when text is selected, and Ctrl+V or Ctrl+Shift+V pastes.
 
@@ -151,8 +154,28 @@ Connections of type `ssh` use these options (all optional, set in the connection
 | `term` | `xterm-256color` | Terminal type requested from the server |
 | `keepAliveSeconds` | `30` | `0` turns keep-alive off (max 3600) |
 | `connectTimeoutSeconds` | `15` | 1 to 300 |
+| `autoReconnect` | off | `true` re-establishes a dropped session automatically |
+| `logSession` | off | `true` saves the session's output to a log file |
+| `forwards` | none | Port forwards, one per line (see below) |
+| `proxyJump` | none | Id of another saved SSH connection to tunnel through (choose it as the **Jump host** in the connection dialog) |
 
 The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
+
+### Port forwards
+
+Add them in the connection dialog, one per line, in a short form of the OpenSSH options:
+
+| Line | Meaning |
+|---|---|
+| `L:8080:db.internal:5432` | Local port 8080 reaches `db.internal:5432` through the server (`ssh -L`) |
+| `R:9000:localhost:3000` | Port 9000 on the server reaches your `localhost:3000` (`ssh -R`) |
+| `D:1080` | A SOCKS proxy on local port 1080 that sends traffic through the server (`ssh -D`) |
+
+They start when the session connects and stop when it closes. Listeners are bound to 127.0.0.1 only, so nothing is exposed to your network. If a port is already taken the connection fails with a message saying so. `LocalForward`, `RemoteForward` and `DynamicForward` lines in an imported OpenSSH `config` are converted.
+
+### Jump hosts
+
+Pick a **Jump host** in the connection dialog to reach a server that is only visible from a bastion. RemoteDeck connects to the bastion with its own saved credential, then opens the SSH connection to your server through it, so the login to the server is still end to end and the bastion only carries encrypted bytes. Jump hosts can be chained (up to 5), and terminals and the SFTP browser both use them. Each hop's host key is checked separately. Importing an OpenSSH `config` links `ProxyJump <alias>` when the alias is in the same file; chains written as `a,b` and `user@host` jumps are not imported.
 
 To try it against a real server (use PowerShell or Windows Terminal):
 
@@ -182,16 +205,15 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 
-1. RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design)
-2. VNC and web tabs
+1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC and web tabs, telnet and serial, and a git terminal (not scheduled; to be designed)
+2. Terminal quality of life: SSH agent support and a scrollback size setting
 3. Theme backdrop (Mica, acrylic) and shape for the standard controls
 4. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
-5. A git terminal (not scheduled; to be designed)
-6. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
+5. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
 
 ## License
 
