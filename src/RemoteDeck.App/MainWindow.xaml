@@ -145,6 +145,7 @@
 
             <Grid>
                 <wv2:WebView2 x:Name="Web" />
+                <Grid x:Name="WebHost" Visibility="Collapsed" />
             </Grid>
         </DockPanel>
     </Grid>
