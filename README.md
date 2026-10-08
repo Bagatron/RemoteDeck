@@ -28,7 +28,7 @@ Download a zip from the [Releases](../../releases) page and unzip it anywhere. T
 - `RemoteDeck-<version>-win-x64.zip` includes everything it needs.
 - `RemoteDeck-<version>-win-x64-needs-dotnet.zip` is smaller but needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 
-Run `RemoteDeck.exe`. The app is not code-signed yet, so Windows SmartScreen may warn you the first time; the `SHA256SUMS.txt` on each release lets you check your download. The Edge WebView2 runtime is also required (already on Windows 11). winget, Scoop and Chocolatey packages are planned.
+Run `RemoteDeck.exe`. The app is not code-signed yet, so Windows SmartScreen may warn you the first time; the `SHA256SUMS.txt` on each release lets you check your download. The Edge WebView2 runtime is also required (already on Windows 11). A winget manifest generator is in `packaging/` (not published to winget yet); Scoop and Chocolatey packages are planned.
 
 Releases are built by GitHub Actions when a version tag such as `v0.1.0` is pushed.
 
@@ -225,7 +225,7 @@ Next, in no fixed order:
 
 1. More connection types: VNC, telnet and serial, and a git terminal (not scheduled; to be designed)
 2. Theme backdrop (Mica, acrylic) and shape for the standard controls
-3. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
+3. Publish to winget (the manifest generator exists, see `packaging/README.md`), Scoop and Chocolatey packages, and a signed installer (release zips are already built by the tag workflow)
 4. Windows Hello / DPAPI unlock and clipboard clearing
 
 ## License
