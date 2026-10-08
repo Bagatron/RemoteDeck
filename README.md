@@ -120,7 +120,10 @@ The first start asks you to create a master password; after that it asks for it 
 - **Split panes:** the `Layout` button switches the current tab to a preset (two columns, 2 x 2 grid, and so on). Each pane header has buttons to split right or down. Drag the bars between panes to resize them. A saved connection opens in the focused empty pane, or in a new tab if none is empty; use right-click, `Open in new tab` to force a new tab. The x in a pane header ends its session, and a second click on an empty pane removes it.
 - **Broadcast:** click the broadcast icon in each pane header you want in the group, then either switch on `Broadcast` (whatever you type in a grouped pane goes to all of them; the panes get a red border) or type a command in the bar and press Enter to run it on every grouped pane. Multi-line pastes and risky commands such as `rm -rf` or `shutdown` ask for confirmation first. Broadcast always starts off.
 - **Quick connect:** type `user@host` (or `user@host:port`) above the tabs for a one-off connection that is not saved.
+<<<<<<< HEAD
 - **Remote Desktop:** a connection of type RDP (add one with `+ Connection`, or import an `.rdp`/RDCMan/mRemoteNG file) opens in the Windows Remote Desktop client, which asks for the password itself. RemoteDeck stores no password for RDP and passes none on. An embedded RDP tab is planned.
+=======
+>>>>>>> cffaeba7e4beb04adf5e23973fbcf1acf3454272
 - **Command palette:** `Ctrl+Shift+P` searches saved connections and actions (new tab, layouts, broadcast, themes, import). Type, arrow keys, Enter.
 - **Shortcuts:** `Ctrl+Shift+T` new tab, `Ctrl+Shift+W` close tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Ctrl+Shift+B` broadcast on/off, `Ctrl+Shift+F` search connections. Plain Ctrl+letter keys always go to the shell.
 - **Terminal:** Ctrl+C copies when text is selected, and Ctrl+V or Ctrl+Shift+V pastes.
