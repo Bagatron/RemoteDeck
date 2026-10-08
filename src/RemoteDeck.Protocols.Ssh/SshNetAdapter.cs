@@ -13,18 +13,24 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
     {
         var wipe = new List<byte[]>();
         SshClient? client = null;
+        SshTunnel? tunnel = null;
         try
         {
-            var created = BuildClient(request, wipe);
+            var (info, opened) = await SshTunnel.PrepareAsync(request, wipe, cancellationToken).ConfigureAwait(false);
+            tunnel = opened;
+            var created = new SshClient(info);
             client = created;
+            Configure(created, request);
 
             // Task.Run keeps the host-key callback (which may wait for the user) off the caller's thread.
             await Task.Run(() => created.ConnectAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new SshNetSession(created);
+            StartForwards(created, request.Forwards);
+            return new SshNetSession(created, tunnel);
         }
         catch (Exception ex)
         {
             client?.Dispose();
+            tunnel?.Dispose();
             throw Translate(ex, request);
         }
         finally
@@ -36,7 +42,34 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
         }
     }
 
-    internal static ConnectionInfo BuildInfo(SshConnectRequest request, List<byte[]> wipe)
+    /// <param name="host">Connect here instead of the request's host (the local end of a tunnel).</param>
+    /// <param name="port">Connect to this port instead of the request's.</param>
+    private static void StartForwards(SshClient client, IReadOnlyList<PortForward> forwards)
+    {
+        foreach (var forward in forwards)
+        {
+            ForwardedPort port = forward.Kind switch
+            {
+                PortForwardKind.Local => new ForwardedPortLocal("127.0.0.1", (uint)forward.BindPort, forward.Host!, (uint)forward.Port!.Value),
+                PortForwardKind.Remote => new ForwardedPortRemote("127.0.0.1", (uint)forward.BindPort, forward.Host!, (uint)forward.Port!.Value),
+                _ => new ForwardedPortDynamic("127.0.0.1", (uint)forward.BindPort),
+            };
+
+            try
+            {
+                client.AddForwardedPort(port);
+                port.Start();
+            }
+            catch (Exception ex) when (ex is System.Net.Sockets.SocketException or Renci.SshNet.Common.SshException or InvalidOperationException)
+            {
+                throw new SshConnectionException(
+                    $"Could not start the port forward {forward}. Is the port already in use? ({ex.Message})",
+                    ex);
+            }
+        }
+    }
+
+    internal static ConnectionInfo BuildInfo(SshConnectRequest request, List<byte[]> wipe, string? host = null, int? port = null)
     {
         var methods = new List<AuthenticationMethod>();
 
@@ -80,7 +113,7 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
             methods.Add(interactive);
         }
 
-        var info = new ConnectionInfo(request.Host, request.Port, request.Username, methods.ToArray())
+        var info = new ConnectionInfo(host ?? request.Host, port ?? request.Port, request.Username, methods.ToArray())
         {
             Timeout = request.ConnectTimeout,
         };
@@ -107,15 +140,12 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
         };
     }
 
-    private static SshClient BuildClient(SshConnectRequest request, List<byte[]> wipe)
-    {
-        var client = new SshClient(BuildInfo(request, wipe));
-        Configure(client, request);
-        return client;
-    }
-
     internal static Exception Translate(Exception ex, SshConnectRequest request)
     {
+        var where = request.Jump is null
+            ? $"{request.Host}:{request.Port}"
+            : $"{request.Host}:{request.Port} through the jump host {request.Jump.Host}";
+
         return ex switch
         {
             OperationCanceledException => ex,
@@ -123,11 +153,11 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
             Renci.SshNet.Common.SshAuthenticationException => new SshConnectionException(
                 $"Authentication failed for '{request.Username}'. Check the password or key.", ex),
             Renci.SshNet.Common.SshOperationTimeoutException => new SshConnectionException(
-                $"Timed out connecting to {request.Host}:{request.Port}.", ex),
+                $"Timed out connecting to {where}.", ex),
             System.Net.Sockets.SocketException => new SshConnectionException(
-                $"Could not reach {request.Host}:{request.Port}: {ex.Message}", ex),
+                $"Could not reach {where}: {ex.Message}", ex),
             Renci.SshNet.Common.SshException => new SshConnectionException(
-                $"The SSH connection to {request.Host}:{request.Port} failed: {ex.Message}", ex),
+                $"The SSH connection to {where} failed: {ex.Message}", ex),
             _ => ex,
         };
     }
@@ -139,18 +169,22 @@ internal sealed class SshNetSftpFactory : ISftpBackendFactory
     {
         var wipe = new List<byte[]>();
         SftpClient? client = null;
+        SshTunnel? tunnel = null;
         try
         {
-            var created = new SftpClient(SshNetSessionFactory.BuildInfo(request, wipe));
+            var (info, opened) = await SshTunnel.PrepareAsync(request, wipe, cancellationToken).ConfigureAwait(false);
+            tunnel = opened;
+            var created = new SftpClient(info);
             client = created;
             SshNetSessionFactory.Configure(created, request);
 
             await Task.Run(() => created.ConnectAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-            return new SshNetSftp(created);
+            return new SshNetSftp(created, tunnel);
         }
         catch (Exception ex)
         {
             client?.Dispose();
+            tunnel?.Dispose();
             throw SshNetSessionFactory.Translate(ex, request);
         }
         finally
@@ -166,10 +200,12 @@ internal sealed class SshNetSftpFactory : ISftpBackendFactory
 internal sealed class SshNetSftp : ISftpBackend
 {
     private readonly SftpClient _client;
+    private readonly IDisposable? _tunnel;
 
-    public SshNetSftp(SftpClient client)
+    public SshNetSftp(SftpClient client, IDisposable? tunnel = null)
     {
         _client = client;
+        _tunnel = tunnel;
     }
 
     public string WorkingDirectory => _client.WorkingDirectory;
@@ -210,16 +246,19 @@ internal sealed class SshNetSftp : ISftpBackend
         }
 
         _client.Dispose();
+        _tunnel?.Dispose();
     }
 }
 
 internal sealed class SshNetSession : ISshSession
 {
     private readonly SshClient _client;
+    private readonly IDisposable? _tunnel;
 
-    public SshNetSession(SshClient client)
+    public SshNetSession(SshClient client, IDisposable? tunnel = null)
     {
         _client = client;
+        _tunnel = tunnel;
     }
 
     public ISshShell OpenShell(string terminal, int columns, int rows)
@@ -243,6 +282,7 @@ internal sealed class SshNetSession : ISshSession
         }
 
         _client.Dispose();
+        _tunnel?.Dispose();
     }
 }
 

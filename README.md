@@ -117,7 +117,7 @@ Applied today: interface colors, terminal colors (background, cursor, selection,
 
 ## Importing
 
-`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, `ProxyJump`, wildcard hosts) is listed in a note when the import finishes.
+`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, a `ProxyJump` it cannot link, `ProxyCommand`, wildcard hosts) is listed in a note when the import finishes.
 
 ## Running the app
 
@@ -151,8 +151,26 @@ Connections of type `ssh` use these options (all optional, set in the connection
 | `term` | `xterm-256color` | Terminal type requested from the server |
 | `keepAliveSeconds` | `30` | `0` turns keep-alive off (max 3600) |
 | `connectTimeoutSeconds` | `15` | 1 to 300 |
+| `forwards` | none | Port forwards, one per line (see below) |
+| `proxyJump` | none | Id of another saved SSH connection to tunnel through (choose it as the **Jump host** in the connection dialog) |
 
 The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
+
+### Port forwards
+
+Add them in the connection dialog, one per line, in a short form of the OpenSSH options:
+
+| Line | Meaning |
+|---|---|
+| `L:8080:db.internal:5432` | Local port 8080 reaches `db.internal:5432` through the server (`ssh -L`) |
+| `R:9000:localhost:3000` | Port 9000 on the server reaches your `localhost:3000` (`ssh -R`) |
+| `D:1080` | A SOCKS proxy on local port 1080 that sends traffic through the server (`ssh -D`) |
+
+They start when the session connects and stop when it closes. Listeners are bound to 127.0.0.1 only, so nothing is exposed to your network. If a port is already taken the connection fails with a message saying so. `LocalForward`, `RemoteForward` and `DynamicForward` lines in an imported OpenSSH `config` are converted.
+
+### Jump hosts
+
+Pick a **Jump host** in the connection dialog to reach a server that is only visible from a bastion. RemoteDeck connects to the bastion with its own saved credential, then opens the SSH connection to your server through it, so the login to the server is still end to end and the bastion only carries encrypted bytes. Jump hosts can be chained (up to 5), and terminals and the SFTP browser both use them. Each hop's host key is checked separately. Importing an OpenSSH `config` links `ProxyJump <alias>` when the alias is in the same file; chains written as `a,b` and `user@host` jumps are not imported.
 
 To try it against a real server (use PowerShell or Windows Terminal):
 
@@ -182,7 +200,7 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 

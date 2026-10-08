@@ -7,12 +7,15 @@ public partial class App : Application
 {
     internal static ThemeManager Themes { get; private set; } = null!;
 
+    internal static AppSettings Settings { get; private set; } = null!;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         // Themes first, so even the unlock dialog already wears your colors.
-        Themes = new ThemeManager(AppSettings.Load());
+        Settings = AppSettings.Load();
+        Themes = new ThemeManager(Settings);
         Themes.Start();
         EventManager.RegisterClassHandler(
             typeof(Window),

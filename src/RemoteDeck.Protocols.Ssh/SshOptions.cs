@@ -20,7 +20,8 @@ public sealed class SshConnectionException : Exception
 /// <summary>
 /// SSH settings read from a connection's <c>Options</c>. All are optional:
 /// <c>username</c> (used when no credential supplies one), <c>privateKeyPath</c>, <c>term</c>,
-/// <c>keepAliveSeconds</c> (0 turns keep-alive off) and <c>connectTimeoutSeconds</c>.
+/// <c>keepAliveSeconds</c> (0 turns keep-alive off), <c>connectTimeoutSeconds</c> and <c>proxyJump</c>
+/// (the id of another saved SSH connection to tunnel through) and <c>forwards</c> (port forwards, see <see cref="PortForward"/>).
 /// </summary>
 internal sealed record SshOptions(
     string Host,
@@ -29,7 +30,9 @@ internal sealed record SshOptions(
     string? PrivateKeyPath,
     string Terminal,
     TimeSpan KeepAlive,
-    TimeSpan ConnectTimeout)
+    TimeSpan ConnectTimeout,
+    string? ProxyJump = null,
+    IReadOnlyList<PortForward>? Forwards = null)
 {
     public const int DefaultPort = 22;
     public const string DefaultTerminal = "xterm-256color";
@@ -82,6 +85,8 @@ internal sealed record SshOptions(
             Text("privateKeyPath"),
             Text("term") ?? DefaultTerminal,
             TimeSpan.FromSeconds(Whole("keepAliveSeconds", 30, 0, 3600)),
-            TimeSpan.FromSeconds(Whole("connectTimeoutSeconds", 15, 1, 300)));
+            TimeSpan.FromSeconds(Whole("connectTimeoutSeconds", 15, 1, 300)),
+            Text("proxyJump"),
+            PortForward.ParseList(options is not null && options.TryGetValue("forwards", out var forwards) ? forwards : null));
     }
 }

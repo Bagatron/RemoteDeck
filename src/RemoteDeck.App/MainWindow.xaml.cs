@@ -14,6 +14,7 @@ using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Core.Import;
 using RemoteDeck.Core.Layout;
+using RemoteDeck.Core.Plugins;
 using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
 using RemoteDeck.Protocols.Ssh;
@@ -26,6 +27,7 @@ public partial class MainWindow : Window
     private readonly AppData _data;
     private readonly TerminalHost _terminals;
     private readonly SshConnectionFactory _ssh;
+    private readonly PluginManager _plugins;
 
     internal MainWindow(AppData data)
     {
@@ -35,7 +37,10 @@ public partial class MainWindow : Window
 
         Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
         _terminals = new TerminalHost(Web);
-        _ssh = new SshConnectionFactory(new FileHostKeyStore(AppPaths.KnownHosts), new DialogHostKeyPrompt(Dispatcher, () => this));
+        _ssh = new SshConnectionFactory(
+            new FileHostKeyStore(AppPaths.KnownHosts),
+            new DialogHostKeyPrompt(Dispatcher, () => this),
+            id => _data.Store.ResolveDefinition(id));
 
         _terminals.Input += OnTerminalInput;
         _terminals.Pasted += OnTerminalPasted;
@@ -47,6 +52,13 @@ public partial class MainWindow : Window
         RefreshTree();
 
         App.Themes.Applied += OnThemeApplied;
+
+        _plugins = new PluginManager(
+            App.Settings,
+            new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor),
+            text => Dispatcher.InvokeAsync(() => SetStatus(text)));
+        _plugins.Changed += () => ConnectionDialog.ExtraTypes = _plugins.Host.ConnectionTypes.ToList();
+        _plugins.Start();
         _terminals.Shortcut += combo => Dispatcher.InvokeAsync(() => RunShortcut(combo));
         PreviewKeyDown += OnWindowKeyDown;
 
@@ -71,6 +83,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             App.Themes.Applied -= OnThemeApplied;
+            _plugins.Dispose();
 
             foreach (var tab in Tabs.ToArray())
             {
@@ -87,6 +100,24 @@ public partial class MainWindow : Window
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+
+    // ---- plugins ----
+
+    private void ShowPlugins() => new PluginsWindow(this, _plugins).ShowDialog();
+
+    private void Plugins_Click(object sender, RoutedEventArgs e) => ShowPlugins();
+
+    private async Task RunPluginCommandAsync(PluginCommand command)
+    {
+        try
+        {
+            await command.Execute(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Plugin command \"{command.Title}\" failed: {ex.Message}");
+        }
+    }
 
     // ---- workspaces ----
 
@@ -156,13 +187,14 @@ public partial class MainWindow : Window
             }
 
             var definition = _data.Store.ResolveDefinition(entry.Id);
-            if (definition is null || !string.Equals(entry.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+            var factory = FactoryFor(entry.Type);
+            if (definition is null || factory is null)
             {
                 continue;
             }
 
             var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
-            _ = ConnectPaneAsync(tab, session, definition, broker, entry.Name, members.Contains(pane.Id));
+            _ = ConnectPaneAsync(tab, session, factory, definition, broker, entry.Name, members.Contains(pane.Id));
         }
 
         SyncTab(tab);
@@ -339,6 +371,7 @@ public partial class MainWindow : Window
             new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
             new("Reload themes", string.Empty, () => App.Themes.Reload()),
+            new("Plugins...", string.Empty, ShowPlugins),
         };
 
         foreach (var preset in Enum.GetNames<LayoutPreset>())
@@ -348,6 +381,12 @@ public partial class MainWindow : Window
                 "Layout: " + System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", " "),
                 string.Empty,
                 () => Preset_Click(new MenuItem { Tag = name }, new RoutedEventArgs())));
+        }
+
+        foreach (var command in _plugins.Host.Commands.ToList())
+        {
+            var captured = command;
+            actions.Add(new PaletteItem("Plugin: " + captured.Title, captured.DefaultKeybinding ?? string.Empty, () => _ = RunPluginCommandAsync(captured)));
         }
 
         foreach (var file in Library.LoadAll().Where(f => f.Workspace is not null))
@@ -803,6 +842,12 @@ public partial class MainWindow : Window
 
     // ---- opening sessions ----
 
+    /// <summary>The factory for a terminal connection type: SSH, or one a running plugin provides.</summary>
+    private IConnectionFactory? FactoryFor(string type) =>
+        string.Equals(type, "ssh", StringComparison.OrdinalIgnoreCase)
+            ? _ssh
+            : _plugins.Host.ConnectionTypes.FirstOrDefault(f => string.Equals(f.Type, type, StringComparison.OrdinalIgnoreCase));
+
     private Task OpenSavedAsync(ConnectionEntry entry, bool newTab = false)
     {
         if (string.Equals(entry.Type, "rdp", StringComparison.OrdinalIgnoreCase))
@@ -811,9 +856,15 @@ public partial class MainWindow : Window
             return Task.CompletedTask;
         }
 
-        if (!string.Equals(entry.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+        var factory = FactoryFor(entry.Type);
+        if (factory is null)
         {
-            MessageBox.Show(this, $"\"{entry.Type}\" connections are not supported yet. Only SSH is.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                this,
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH and RDP. Other types come from plugins, which may be turned off (see Plugins).",
+                "RemoteDeck",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             return Task.CompletedTask;
         }
 
@@ -824,7 +875,7 @@ public partial class MainWindow : Window
         }
 
         var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
-        return StartSessionAsync(definition, broker, entry.Name, newTab);
+        return StartSessionAsync(definition, broker, entry.Name, newTab, factory);
     }
 
     /// <summary>Opens the connection in the Windows Remote Desktop client. It asks for the password itself, so none is passed on.</summary>
@@ -893,7 +944,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Opens a session in an empty pane of the current tab (the focused one first), or in a new tab if there is none.</summary>
-    private async Task StartSessionAsync(ConnectionDefinition definition, ICredentialBroker broker, string title, bool newTab)
+    private async Task StartSessionAsync(ConnectionDefinition definition, ICredentialBroker broker, string title, bool newTab, IConnectionFactory? factory = null)
     {
         WorkspaceTab tab;
         PaneSession pane;
@@ -909,19 +960,27 @@ public partial class MainWindow : Window
             pane = tab.Sessions[0];
         }
 
-        await ConnectPaneAsync(tab, pane, definition, broker, title, member: false);
+        await ConnectPaneAsync(tab, pane, factory ?? _ssh, definition, broker, title, member: false);
     }
 
     /// <summary>Starts an SSH session in a specific pane and wires its output, state and broadcast membership.</summary>
     private async Task ConnectPaneAsync(
         WorkspaceTab tab,
         PaneSession pane,
+        IConnectionFactory factory,
         ConnectionDefinition definition,
         ICredentialBroker broker,
         string title,
         bool member)
     {
-        var connection = (ITerminalConnection)_ssh.Create(definition, broker);
+        var created = factory.Create(definition, broker);
+        if (created is not ITerminalConnection connection)
+        {
+            await created.DisposeAsync();
+            MessageBox.Show(this, $"\"{definition.Type}\" connections can't open in a terminal pane.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         pane.ConnectionId = _data.Store.FindConnection(definition.Id) is null ? null : definition.Id;
         pane.Connection = connection;
         pane.Title = title;

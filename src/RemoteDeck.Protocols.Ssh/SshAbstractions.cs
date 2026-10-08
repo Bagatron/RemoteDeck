@@ -26,6 +26,15 @@ internal sealed class SshConnectRequest
     /// so implementations call it from a background thread, never the UI thread.
     /// </summary>
     public required Func<HostKeyInfo, bool> VerifyHostKey { get; init; }
+
+    /// <summary>
+    /// A host to tunnel through first (its own <see cref="Jump"/> is the hop before that). The target is then
+    /// reached from the jump host, so it need not be reachable from this computer directly.
+    /// </summary>
+    public SshConnectRequest? Jump { get; init; }
+
+    /// <summary>Port forwards to start once connected. If one cannot start (say the port is taken), the connection fails with a clear message.</summary>
+    public IReadOnlyList<PortForward> Forwards { get; init; } = Array.Empty<PortForward>();
 }
 
 internal interface ISshSessionFactory
