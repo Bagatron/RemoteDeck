@@ -121,7 +121,7 @@ Not covered yet: a clipboard-clearing helper. Treat the format as version 1 and 
 
 The `Theme` button at the bottom of the sidebar lists the built-in themes (RemoteDeck Dark and Light), the example files in the `themes` folder next to the program, and your own. Put your own `.json` files in `%LOCALAPPDATA%\RemoteDeck\themes` (the `Open my themes folder` item opens it); a file there replaces a shipped theme of the same name. Saving a theme file applies it straight away, no restart needed. A file with a mistake is skipped and the `Theme problems` item names the file and the field.
 
-Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors), fonts (the terminal uses the theme's font size plus one) and the shape of the terminal area: `cornerRadius` rounds the panes and their buttons, `borderWidth` is the pane outline (0 hides it), and `density` (`compact`, `comfortable`, `spacious`) sets the pane header height and text padding. The standard Windows controls (buttons, lists, menus) keep their own Fluent shape, and `backdrop` (Mica, acrylic) is read and checked but not drawn yet. The choice is remembered in `settings.json`.
+Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors), fonts (the terminal uses the theme's font size plus one) and the shape of the terminal area: `cornerRadius` rounds the panes and their buttons, `borderWidth` is the pane outline (0 hides it), and `density` (`compact`, `comfortable`, `spacious`) sets the pane header height and text padding. `cornerRadius` also rounds the standard controls (buttons, boxes, tabs; menus and popups get twice that), and `backdrop` (`mica`, `acrylic`, `tabbed`, `none`) is drawn behind the windows on Windows 11 22H2 or newer. The material only shows through where your colors are translucent, so give `background` and `surface` an alpha (for example `#282A36D9`). Dracula does this. The choice is remembered in `settings.json`.
 
 ## Importing
 
@@ -231,13 +231,12 @@ Done: encrypted vault, jump hosts, port forwards, saved connections, SSH termina
 
 Next, in this order:
 
-1. Theme backdrop (Mica, acrylic) and shape for the standard controls
-2. A git terminal connection type (to be designed)
-3. A MobaXterm importer (needs a sample export)
-4. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
-5. Clipboard clearing
-6. VNC
-7. Cleanup: newer GitHub Actions versions and a test that blocks on a task
+1. A git terminal connection type (to be designed)
+2. A MobaXterm importer (needs a sample export)
+3. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+4. Clipboard clearing
+5. VNC
+6. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 

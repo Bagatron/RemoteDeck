@@ -5,8 +5,8 @@
   "base": "dark",
   "backdrop": "acrylic",
   "colors": {
-    "background": "#282A36",
-    "surface": "#343746",
+    "background": "#282A36D9",
+    "surface": "#343746D9",
     "surfaceAlt": "#44475A",
     "foreground": "#F8F8F2",
     "mutedForeground": "#6272A4",

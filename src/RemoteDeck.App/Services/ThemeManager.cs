@@ -118,6 +118,7 @@ internal sealed class ThemeManager : IDisposable
     {
         window.FontFamily = new FontFamily(Current.Font.Ui);
         window.FontSize = Current.Font.Size;
+        WindowBackdrop.Apply(window, Current.Backdrop);
     }
 
     public void Dispose()
@@ -154,6 +155,13 @@ internal sealed class ThemeManager : IDisposable
         Set("Warning", c.Warning);
         Set("Success", c.Success);
         Set("Broadcast", c.Broadcast);
+
+        // Corner radius: Fluent's control templates read these three keys dynamically, so replacing them restyles
+        // every button, box, tab and menu already on screen.
+        var radius = Math.Max(0, theme.Shape.CornerRadius);
+        app.Resources["ControlCornerRadius"] = new CornerRadius(radius);
+        app.Resources["OverlayCornerRadius"] = new CornerRadius(radius * 2);
+        app.Resources["PopupCornerRadius"] = new CornerRadius(radius * 2);
 
         app.ThemeMode = theme.Base == ThemeBase.Light ? ThemeMode.Light : ThemeMode.Dark;
         foreach (Window window in app.Windows)
