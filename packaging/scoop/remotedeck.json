@@ -1,0 +1,34 @@
+{
+    "version": "0.4.0",
+    "description": "Lightweight remote desktop and terminal manager with an encrypted password vault (SSH, Remote Desktop, web pages).",
+    "homepage": "https://github.com/Bagatron/RemoteDeck",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Bagatron/RemoteDeck/releases/download/v0.4.0/RemoteDeck-0.4.0-win-x64.zip",
+            "hash": "2cb5e0615464176d699986c32bd897f1df79ea274372bbd8068218c48855d874"
+        }
+    },
+    "bin": "RemoteDeck.exe",
+    "shortcuts": [
+        [
+            "RemoteDeck.exe",
+            "RemoteDeck"
+        ]
+    ],
+    "checkver": {
+        "url": "https://api.github.com/repos/Bagatron/RemoteDeck/releases",
+        "jsonpath": "$[0].tag_name",
+        "regex": "v([\\d.]+)"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Bagatron/RemoteDeck/releases/download/v$version/RemoteDeck-$version-win-x64.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}
