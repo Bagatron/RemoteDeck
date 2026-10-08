@@ -8,6 +8,7 @@
         <TextBlock Text="Type" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
         <ComboBox x:Name="TypeBox" Padding="6,5" SelectionChanged="TypeBox_SelectionChanged">
             <ComboBoxItem Content="SSH" Tag="ssh" />
+            <ComboBoxItem Content="Telnet (not encrypted)" Tag="telnet" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
@@ -53,6 +54,12 @@
             <CheckBox x:Name="ExternalBox" Content="Open in the Windows Remote Desktop app instead of a tab" Margin="0,12,0,0" />
             <TextBlock Text="By default the session opens in a RemoteDeck tab and asks for the password each time; it is never saved."
                        Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
+        <StackPanel x:Name="TelnetPanel" Visibility="Collapsed">
+            <TextBlock Text="Telnet sends everything, including the login you type, without encryption. Use it only for devices on a network you trust. There is nothing to save here: you log in at the remote prompt."
+                       Margin="0,12,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+            <CheckBox x:Name="LocalEchoBox" Content="Show what I type myself (for devices that do not echo)" Margin="0,8,0,0" />
         </StackPanel>
 
         <StackPanel x:Name="WebPanel" Visibility="Collapsed">

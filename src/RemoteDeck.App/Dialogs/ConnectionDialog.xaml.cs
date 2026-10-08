@@ -74,6 +74,7 @@ public partial class ConnectionDialog : Window
             ReconnectBox.IsChecked = string.Equals(Option(existing, "autoReconnect"), "true", StringComparison.OrdinalIgnoreCase);
             AgentBox.IsChecked = string.Equals(Option(existing, "useAgent"), "true", StringComparison.OrdinalIgnoreCase);
             CertBox.IsChecked = string.Equals(Option(existing, "acceptUntrustedCertificate"), "true", StringComparison.OrdinalIgnoreCase);
+            LocalEchoBox.IsChecked = string.Equals(Option(existing, "localEcho"), "true", StringComparison.OrdinalIgnoreCase);
             ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
             ForwardsBox.Text = Option(existing, "forwards").Replace("\n", Environment.NewLine);
@@ -103,16 +104,19 @@ public partial class ConnectionDialog : Window
 
     private bool IsWeb => SelectedType == "web";
 
+    private bool IsTelnet => SelectedType == "telnet";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null)
         {
             return;
         }
 
-        LoginPanel.Visibility = IsWeb ? Visibility.Collapsed : Visibility.Visible;
+        LoginPanel.Visibility = IsWeb || IsTelnet ? Visibility.Collapsed : Visibility.Visible;
+        TelnetPanel.Visibility = IsTelnet ? Visibility.Visible : Visibility.Collapsed;
         WebPanel.Visibility = IsWeb ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = IsRdp ? Visibility.Visible : Visibility.Collapsed;
 
@@ -122,7 +126,7 @@ public partial class ConnectionDialog : Window
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
-        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
+        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsTelnet ? "Leave empty for 23" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -238,6 +242,15 @@ public partial class ConnectionDialog : Window
             options.Remove("acceptUntrustedCertificate");
         }
 
+        if (IsTelnet && LocalEchoBox.IsChecked == true)
+        {
+            options["localEcho"] = "true";
+        }
+        else
+        {
+            options.Remove("localEcho");
+        }
+
         if (IsRdp && ExternalBox.IsChecked == true)
         {
             options["externalClient"] = "true";
@@ -293,7 +306,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp || IsWeb ? string.Empty : PasswordBox.Password;
+        Password = IsRdp || IsWeb || IsTelnet ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

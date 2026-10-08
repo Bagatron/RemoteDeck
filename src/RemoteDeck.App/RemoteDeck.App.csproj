@@ -29,6 +29,7 @@
     <ProjectReference Include="..\RemoteDeck.Core\RemoteDeck.Core.csproj" />
     <ProjectReference Include="..\RemoteDeck.Vault\RemoteDeck.Vault.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Ssh\RemoteDeck.Protocols.Ssh.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Protocols.Telnet\RemoteDeck.Protocols.Telnet.csproj" />
   </ItemGroup>
 
   <ItemGroup>
