@@ -111,6 +111,8 @@
     close: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" fill="none"/></svg>'
   };
 
+  let scrollbackLines = 10000;
+
   const root = document.getElementById("root");
   const emptyHint = document.getElementById("empty");
   const encoder = new TextEncoder();
@@ -170,7 +172,7 @@
       fontFamily: termFont.family,
       fontSize: termFont.size,
       cursorBlink: true,
-      scrollback: 10000,
+      scrollback: scrollbackLines,
       allowProposedApi: true,   // the find bar highlights matches with decorations
       theme: termTheme
     });
@@ -506,6 +508,10 @@
     const m = event.data;
     switch (m.t) {
       case "theme": applyTheme(m); break;
+      case "scrollback":
+        scrollbackLines = m.lines;
+        for (const pane of panes.values()) pane.term.options.scrollback = m.lines;
+        break;
       case "sync": sync(m); break;
       case "show": showTab(m.tab); break;
       case "closeTab": closeTab(m.tab); break;
@@ -517,16 +523,35 @@
   // App shortcuts. They are caught before the terminal sees them and handled by the host, which also
   // owns the same list for when the WPF side has focus. Plain Ctrl+letter keys stay with the shell.
   const shortcuts = new Set([
-    "ctrl+shift+p", "ctrl+shift+t", "ctrl+shift+w", "ctrl+shift+b", "ctrl+shift+f", "ctrl+tab", "ctrl+shift+tab",
+    "ctrl+shift+p", "ctrl+shift+t", "ctrl+shift+w", "ctrl+shift+b", "ctrl+shift+f", "ctrl+shift+l", "ctrl+tab", "ctrl+shift+tab",
   ]);
   document.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
+    // Find is handled here, in the page, so it works wherever focus is inside it.
+    if (e.shiftKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      e.stopPropagation();
+      const tab = tabs.get(activeTab);
+      if (tab && tab.focused) openFind(tab.focused);
+      return;
+    }
     const combo = "ctrl+" + (e.shiftKey ? "shift+" : "") + e.key.toLowerCase();
     if (!shortcuts.has(combo)) return;
     e.preventDefault();
     e.stopPropagation();
     post({ t: "key", k: combo });
   }, true);
+
+  // Tells the host the user is here, so the vault does not lock while someone reads or scrolls a terminal.
+  let lastActivity = 0;
+  for (const type of ["mousemove", "mousedown", "wheel", "keydown"]) {
+    document.addEventListener(type, () => {
+      const now = Date.now();
+      if (now - lastActivity < 5000) return;
+      lastActivity = now;
+      post({ t: "activity" });
+    }, true);
+  }
 
   post({ t: "ready" });
 })();

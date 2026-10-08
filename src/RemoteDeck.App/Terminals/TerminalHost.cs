@@ -45,6 +45,9 @@ public sealed class TerminalHost
     /// <summary>An app shortcut was pressed while the terminal page had focus, e.g. "ctrl+shift+p".</summary>
     public event Action<string>? Shortcut;
 
+    /// <summary>The user moved the mouse, scrolled or typed inside the terminal page (reported at most every few seconds).</summary>
+    public event Action? Activity;
+
     public async Task InitializeAsync()
     {
         var dataFolder = Path.Combine(
@@ -90,6 +93,12 @@ public sealed class TerminalHost
 
     /// <summary>Shows a tab's current layout and pane details. Safe to call as often as needed.</summary>
     public void Sync(WorkspaceTab tab) => Send(tab.ToSync());
+
+    /// <summary>How many lines each terminal keeps to scroll back through (applies to open terminals too).</summary>
+    public void SetScrollback(int lines)
+    {
+        Send(new JsonObject { ["t"] = "scrollback", ["lines"] = Math.Clamp(lines, 100, 200_000) });
+    }
 
     /// <summary>Gives the page the interface colors, the terminal palette and the terminal font.</summary>
     public void SetTheme(Theme theme)
@@ -203,6 +212,10 @@ public sealed class TerminalHost
 
             case "key":
                 Shortcut?.Invoke(root.GetProperty("k").GetString() ?? string.Empty);
+                break;
+
+            case "activity":
+                Activity?.Invoke();
                 break;
 
             case "action":

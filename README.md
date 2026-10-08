@@ -107,7 +107,9 @@ var path = Path.Combine(
 VaultStorage.Save(vault, path);
 ```
 
-Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
+**Auto-lock:** after 15 minutes without use (change it with `Ctrl+Shift+P`, `auto-lock`: 5, 15, 60 minutes or never), when Windows locks, or with `Ctrl+Shift+L` (*Lock now*), RemoteDeck wipes the data key, hides its window and asks for the master password. Sessions that are already connected keep running, but saved passwords cannot be used until you unlock, so a dropped session will not reconnect while locked. Moving the mouse or typing inside a terminal counts as use.
+
+Not covered yet: Windows Hello/DPAPI unlock and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
 
 ## Themes
 
@@ -135,6 +137,9 @@ The first start asks you to create a master password; after that it asks for it 
 - **Files (SFTP):** right-click an SSH connection, `Browse files (SFTP)` (or type `sftp` and a name in the palette). A file window opens for the same server, with the same saved password and host-key check. Double-click a folder to open it; `Upload files...`, `Upload folder...`, drag files in from Explorer, `Download`, `New folder`, `Rename`, `Delete` (folders are deleted with their contents, after a confirmation). Transfers can be cancelled.
 - **Workspaces:** open a tab the way you like it (layout, connections in their panes, which panes are in the broadcast group), then `Workspaces`, `Save current tab as workspace...` (or the same command in the palette). Opening a saved workspace puts it in a new tab and connects every pane. Broadcast always starts off. Workspaces are plain JSON files in `%LOCALAPPDATA%\RemoteDeck\workspaces` (see `workspaces/` for examples and `schemas/` for the format); they refer to connections by id, so a connection you deleted is reported and left out.
 - **Command palette:** `Ctrl+Shift+P` searches saved connections and actions (new tab, layouts, broadcast, themes, import). Type, arrow keys, Enter.
+- **Auto-reconnect:** tick **Reconnect automatically if the connection drops** in an SSH connection's dialog. If the network or server drops an established session, RemoteDeck waits 2, 4, 8, 16 and then 30 seconds between up to 8 attempts, keeping the pane and its scrollback. It does not retry after you type `exit` or close the pane, or when the password is wrong or the host key is refused (retrying a wrong password could lock the account).
+- **Session logs:** tick **Log session output to a file** in an SSH connection's dialog and each session is saved as plain text (colors and escape sequences removed; backspaces and progress bars collapse to what you saw) in `%LOCALAPPDATA%\RemoteDeck\logs`, named after the connection and the time. Only what the server prints is logged, not what you type, but anything shown on screen is, so treat the folder like the sessions themselves. `Ctrl+Shift+P`, `logs` opens the folder.
+- **Scrollback size:** `Ctrl+Shift+P`, `scrollback` picks how many lines each terminal keeps (1,000 to 100,000; the default is 10,000). It applies at once and is remembered. Bigger values use more memory per pane.
 - **Find in scrollback:** the magnifier in a pane's header, or `Ctrl+Shift+S` with the pane focused. Matches are highlighted as you type; `Enter` / `Shift+Enter` (or `F3`) step through them, `Aa` matches case, `Esc` closes. (Plain `Ctrl+F` is left to the shell, where it moves the cursor.)
 - **Shortcuts:** `Ctrl+Shift+T` new tab, `Ctrl+Shift+W` close tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs, `Ctrl+Shift+B` broadcast on/off, `Ctrl+Shift+F` search connections. Plain Ctrl+letter keys always go to the shell.
 - **Terminal:** Ctrl+C copies when text is selected, and Ctrl+V or Ctrl+Shift+V pastes.
@@ -152,10 +157,17 @@ Connections of type `ssh` use these options (all optional, set in the connection
 | `term` | `xterm-256color` | Terminal type requested from the server |
 | `keepAliveSeconds` | `30` | `0` turns keep-alive off (max 3600) |
 | `connectTimeoutSeconds` | `15` | 1 to 300 |
+| `useAgent` | off | `true` also signs in with keys held by the Windows OpenSSH agent or Pageant |
+| `autoReconnect` | off | `true` re-establishes a dropped session automatically |
+| `logSession` | off | `true` saves the session's output to a log file |
 | `forwards` | none | Port forwards, one per line (see below) |
 | `proxyJump` | none | Id of another saved SSH connection to tunnel through (choose it as the **Jump host** in the connection dialog) |
 
 The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
+
+### SSH agent
+
+Tick **Use keys from the SSH agent** in the connection dialog and RemoteDeck asks a running agent to sign the login, so you need no key file path and no passphrase prompt. It tries the Windows OpenSSH agent first (start the *OpenSSH Authentication Agent* service, then `ssh-add C:\Users\you\.ssh\id_ed25519`), then Pageant. The agent does the signing: the private key never enters RemoteDeck. Jump hosts can use the agent too. Agent support comes from the MIT-licensed [SshNet.Agent](https://github.com/darinkes/SshNet.Agent) package; ed25519, ECDSA and RSA (SHA-2) keys work.
 
 ### Port forwards
 
@@ -201,15 +213,14 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 
 1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC and web tabs, telnet and serial, and a git terminal (not scheduled; to be designed)
-2. Terminal quality of life: SSH agent support, session logging, auto-reconnect and a scrollback size setting
-3. Theme backdrop (Mica, acrylic) and shape for the standard controls
-4. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
-5. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
+2. Theme backdrop (Mica, acrylic) and shape for the standard controls
+3. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
+4. Windows Hello / DPAPI unlock and clipboard clearing
 
 ## License
 
