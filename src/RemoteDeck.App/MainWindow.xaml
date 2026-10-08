@@ -33,7 +33,7 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="270" MinWidth="160" MaxWidth="600" />
+            <ColumnDefinition Width="270" MinWidth="200" MaxWidth="600" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
@@ -54,16 +54,30 @@
                 </Grid>
             </StackPanel>
             <Border DockPanel.Dock="Bottom" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-                <WrapPanel>
-                    <Button x:Name="ThemeButton" Content="Theme  &#x25BE;" Padding="10,4" Click="ThemeButton_Click" />
-                    <Button Content="Import..." Padding="10,4" Margin="6,0,0,0" Click="Import_Click" />
-                    <Button x:Name="WorkspacesButton" Content="Workspaces  &#x25BE;" Padding="10,4" Margin="0,6,0,0" Click="WorkspacesButton_Click" />
-                    <Button Content="Plugins..." Padding="10,4" Margin="6,6,0,0" Click="Plugins_Click" />
-                </WrapPanel>
+                <!-- Two equal columns that share the width, so the buttons line up at any sidebar size. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="6" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Button x:Name="ThemeButton" Grid.Row="0" Grid.Column="0" Content="Theme  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="ThemeButton_Click" />
+                    <Button Grid.Row="0" Grid.Column="2" Content="Import..." Padding="6,4" HorizontalAlignment="Stretch" Click="Import_Click" />
+                    <Button x:Name="WorkspacesButton" Grid.Row="2" Grid.Column="0" Content="Workspaces  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="WorkspacesButton_Click" />
+                    <Button Grid.Row="2" Grid.Column="2" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
+                </Grid>
             </Border>
             <TreeView x:Name="Tree" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"
-                      PreviewMouseRightButtonDown="Tree_PreviewMouseRightButtonDown">
+                      PreviewMouseRightButtonDown="Tree_PreviewMouseRightButtonDown"
+                      AllowDrop="True" PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown"
+                      PreviewMouseMove="Tree_PreviewMouseMove" DragOver="Tree_DragOver"
+                      DragLeave="Tree_DragLeave" Drop="Tree_Drop">
                 <TreeView.ContextMenu>
                     <ContextMenu Opened="TreeMenu_Opened">
                         <MenuItem x:Name="MenuOpen" Header="Open" Click="MenuOpen_Click" />
@@ -146,6 +160,8 @@
             <Grid>
                 <wv2:WebView2 x:Name="Web" />
                 <Grid x:Name="WebHost" Visibility="Collapsed" />
+                <!-- Browsers for web pages that sit inside terminal panes; placed over the pane they belong to. -->
+                <Canvas x:Name="PaneWebHost" />
             </Grid>
         </DockPanel>
     </Grid>

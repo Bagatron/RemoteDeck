@@ -55,6 +55,13 @@
                  text-align: center; color: var(--dim); line-height: 1.7; pointer-events: none; }
   .pane.empty .placeholder { display: flex; }
   .pane.empty .xt { visibility: hidden; }
+  /* A web page in a pane is a native browser the host lays over this area; the page only reserves the space. */
+  .pane.web { border-radius: 0; }
+  .pane.web .xt { visibility: hidden; }
+  .pane.web [data-a="find"], .pane.web [data-a="member"] { display: none; }
+  .pane:not(.web) [data-w] { display: none; }
+  .hdr button[data-w] { padding: 4px 7px; font-size: 13px; line-height: 12px; }
+  .hdr button:disabled { opacity: .35; cursor: default; background: none; color: var(--dim); }
 
   .find { position: absolute; top: 6px; right: 14px; z-index: 6; display: none; align-items: center; gap: 2px;
           padding: 3px; background: var(--panel); border: var(--bw) solid var(--line);
@@ -85,11 +92,12 @@
   // forwards keystrokes. Every pane is identified by the id of its terminal.
   //
   // Host -> page:
-  //   { t: "sync", tab, tree, panes: [{ id, title, state, empty, member }], broadcast }   (idempotent)
+  //   { t: "sync", tab, tree, panes: [{ id, title, state, empty, web, member }], broadcast }   (idempotent)
   //   { t: "show", tab } | { t: "closeTab", tab } | { t: "out", id, b64 } | { t: "focusPane", id }
   // Page -> host:
   //   { t: "ready" } | { t: "in", id, b64 } | { t: "paste", id, text } | { t: "size", id, cols, rows }
   //   { t: "focus", id } | { t: "ratio", tab, path, ratio } | { t: "action", id, a }
+  //   { t: "rects", tab, rects: [{ id, x, y, w, h }] }   where each pane's body is, so the host can lay a browser over it
   const GUTTER = 5;
   // Replaced by the host's "theme" message as soon as the page is ready; these are only the first-paint defaults.
   let termTheme = {
@@ -142,7 +150,35 @@
       const id = entry.target.dataset.id;
       if (id) refit(id);
     }
+    scheduleRects();
   });
+
+  // Tells the host where every visible pane's body is (in page pixels, which are the window's device-independent
+  // pixels). Panes that hold a web page are drawn by the host on top of that space.
+  let rectsQueued = false;
+  let lastRects = null;
+  function scheduleRects() {
+    if (rectsQueued) return;
+    rectsQueued = true;
+    requestAnimationFrame(() => {
+      rectsQueued = false;
+      const tab = tabs.get(activeTab);
+      if (!tab) return;
+      const rects = [];
+      for (const id of tab.ids) {
+        const pane = panes.get(id);
+        if (!pane || pane.el.offsetParent === null) continue;
+        const r = pane.body.getBoundingClientRect();
+        rects.push({ id, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+      }
+      const message = { t: "rects", tab: activeTab, rects };
+      const text = JSON.stringify(message);
+      if (text === lastRects) return;
+      lastRects = text;
+      post(message);
+    });
+  }
+  window.addEventListener("resize", scheduleRects);
 
   // ---- panes ----
 
@@ -151,6 +187,10 @@
     el.className = "pane empty";
     el.innerHTML =
       '<div class="hdr"><span class="dot"></span><span class="title"></span><span class="spacer"></span>' +
+      '<button data-a="webBack" data-w title="Back">&#x2039;</button>' +
+      '<button data-a="webForward" data-w title="Forward">&#x203A;</button>' +
+      '<button data-a="webReload" data-w title="Reload">&#x21BB;</button>' +
+      '<button data-a="webExternal" data-w title="Open in your browser">&#x2197;</button>' +
       '<button data-a="find" title="Find in scrollback (Ctrl+Shift+S)">' + ICON.find + '</button>' +
       '<button data-a="member" title="Include in broadcast group">' + ICON.cast + '</button>' +
       '<button data-a="splitRight" title="Split right">' + ICON.right + '</button>' +
@@ -218,7 +258,7 @@
 
     el.querySelector(".hdr").addEventListener("click", (e) => {
       const button = e.target.closest("button");
-      if (!button) return;
+      if (!button || button.disabled) return;
       if (button.dataset.a === "find") openFind(id);
       else post({ t: "action", id, a: button.dataset.a });
     });
@@ -233,6 +273,8 @@
       dot: el.querySelector(".dot"),
       title: el.querySelector(".title"),
       closeButton: el.querySelector('[data-a="close"]'),
+      backButton: el.querySelector('[data-a="webBack"]'),
+      forwardButton: el.querySelector('[data-a="webForward"]'),
       opened: false, wasEmpty: true
     };
     panes.set(id, pane);
@@ -335,6 +377,9 @@
     pane.title.textContent = meta.title || "";
     pane.dot.className = "dot " + (meta.empty ? "" : meta.state);
     pane.el.classList.toggle("empty", meta.empty);
+    pane.el.classList.toggle("web", !!meta.web);
+    pane.backButton.disabled = !meta.back;
+    pane.forwardButton.disabled = !meta.fwd;
     pane.el.classList.toggle("member", meta.member);
     pane.el.classList.toggle("live", broadcast && meta.member);
     pane.closeButton.title = meta.empty ? "Remove this pane" : "End this session";
@@ -406,6 +451,7 @@
         ratio = Math.min(0.95, Math.max(0.05, pos / size));
         first.style.flex = ratio + " 1 0";
         second.style.flex = (1 - ratio) + " 1 0";
+        scheduleRects();
       };
       const up = (ev) => {
         gutter.releasePointerCapture(ev.pointerId);
@@ -420,6 +466,7 @@
   }
 
   function afterLayout(tabId) {
+    scheduleRects();
     requestAnimationFrame(() => {
       const tab = tabs.get(tabId);
       if (!tab || tabId !== activeTab) return;
@@ -478,6 +525,7 @@
     }
     tab.ids = wanted;
 
+    scheduleRects();
     const key = structureKey(m.tree);
     if (key !== tab.key) {
       tab.key = key;
@@ -490,6 +538,7 @@
 
   function showTab(tabId) {
     activeTab = tabId;
+    lastRects = null;   // the host hides its browsers while another tab is up, so it needs the positions again
     for (const [id, tab] of tabs) tab.el.classList.toggle("active", id === tabId);
     afterLayout(tabId);
   }

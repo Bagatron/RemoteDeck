@@ -104,6 +104,58 @@ public sealed class ConnectionStore
     }
 
     /// <summary>
+    /// Moves a folder under another folder, or to the top level when <paramref name="newParentId"/> is null.
+    /// Moving a folder into itself or one of its own subfolders is refused.
+    /// </summary>
+    public void MoveFolder(string id, string? newParentId)
+    {
+        lock (_gate)
+        {
+            if (!_folders.TryGetValue(id, out var folder))
+            {
+                throw new CatalogException($"No folder with id '{id}'.");
+            }
+
+            if (folder.ParentId == newParentId)
+            {
+                return;
+            }
+
+            var moved = folder with { ParentId = newParentId };
+            ValidateParent(moved);
+            _folders[id] = moved;
+        }
+
+        RaiseChanged();
+    }
+
+    /// <summary>Whether <see cref="MoveFolder"/> would accept this move (the target exists and is not inside the folder).</summary>
+    public bool CanMoveFolder(string id, string? newParentId)
+    {
+        lock (_gate)
+        {
+            if (!_folders.ContainsKey(id))
+            {
+                return false;
+            }
+
+            var current = newParentId;
+            var steps = 0;
+            while (current is not null)
+            {
+                if (current == id || !_folders.TryGetValue(current, out var parent) || ++steps > _folders.Count)
+                {
+                    return false;
+                }
+
+                current = parent.ParentId;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Removes a folder. With <paramref name="deleteContents"/> everything inside goes too; otherwise the
     /// contents move up to the folder's parent.
     /// </summary>
@@ -213,6 +265,28 @@ public sealed class ConnectionStore
 
             RequireFolder(entry.FolderId);
             _connections[entry.Id] = entry;
+        }
+
+        RaiseChanged();
+    }
+
+    /// <summary>Moves a connection into a folder, or to the top level when <paramref name="folderId"/> is null.</summary>
+    public void MoveConnection(string id, string? folderId)
+    {
+        lock (_gate)
+        {
+            if (!_connections.TryGetValue(id, out var connection))
+            {
+                throw new CatalogException($"No connection with id '{id}'.");
+            }
+
+            if (connection.FolderId == folderId)
+            {
+                return;
+            }
+
+            RequireFolder(folderId);
+            _connections[id] = connection with { FolderId = folderId };
         }
 
         RaiseChanged();

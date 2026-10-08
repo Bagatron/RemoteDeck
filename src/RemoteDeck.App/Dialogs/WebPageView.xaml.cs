@@ -42,6 +42,42 @@ public partial class WebPageView : UserControl, IDisposable
     /// <summary>The page's own title, for the tab.</summary>
     public event Action<string>? TitleChanged;
 
+    /// <summary>Raised once the browser window exists (and again after it has navigated).</summary>
+    public event Action? BrowserReady;
+
+    /// <summary>Whether Back and Forward would do anything now; raised as the page navigates.</summary>
+    public event Action<bool, bool>? HistoryChanged;
+
+    /// <summary>
+    /// Hides this control's own toolbar and warning. Used in a terminal pane: the browser there is a native window laid
+    /// over the pane, and ordinary controls cannot be drawn on top of it, so the pane's header carries the buttons.
+    /// </summary>
+    public bool ToolbarHidden
+    {
+        set
+        {
+            Toolbar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+            if (value)
+            {
+                Warning.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    /// <summary>True when this connection skips the certificate check.</summary>
+    public bool AcceptsUntrustedCertificate => _acceptUntrustedCertificate;
+
+    /// <summary>The native window of the browser, or zero before it exists.</summary>
+    public IntPtr BrowserHandle => Browser.Handle;
+
+    public void GoBack() => Browser.CoreWebView2?.GoBack();
+
+    public void GoForward() => Browser.CoreWebView2?.GoForward();
+
+    public void Reload() => Browser.CoreWebView2?.Reload();
+
+    public void OpenExternal() => External_Click(this, new RoutedEventArgs());
+
     private async Task StartAsync()
     {
         if (_started || _disposed)
@@ -107,6 +143,7 @@ public partial class WebPageView : UserControl, IDisposable
         }
 
         core.Navigate(_address.AbsoluteUri);
+        BrowserReady?.Invoke();
     }
 
     private static bool IsWebUri(string text) =>
@@ -124,6 +161,7 @@ public partial class WebPageView : UserControl, IDisposable
 
         BackButton.IsEnabled = core.CanGoBack;
         ForwardButton.IsEnabled = core.CanGoForward;
+        HistoryChanged?.Invoke(core.CanGoBack, core.CanGoForward);
         AddressText.Text = core.Source;
     }
 

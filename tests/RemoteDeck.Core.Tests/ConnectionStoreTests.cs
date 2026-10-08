@@ -533,6 +533,82 @@ public class ConnectionStoreTests
         Assert.False(string.IsNullOrWhiteSpace(first));
         Assert.NotEqual(first, second);
     }
+
+    // ---- moving ----
+
+    [Fact]
+    public void MoveConnection_PutsItInTheFolderAndBackToTheTop()
+    {
+        var store = Store(new FolderEntry("f1", "Prod"));
+        store.AddConnection(Conn("c1"));
+
+        store.MoveConnection("c1", "f1");
+        Assert.Equal("f1", store.FindConnection("c1")!.FolderId);
+
+        store.MoveConnection("c1", null);
+        Assert.Null(store.FindConnection("c1")!.FolderId);
+    }
+
+    [Fact]
+    public void MoveConnection_ToAMissingFolderIsRefused()
+    {
+        var store = new ConnectionStore();
+        store.AddConnection(Conn("c1"));
+
+        Assert.Throws<CatalogException>(() => store.MoveConnection("c1", "nope"));
+        Assert.Null(store.FindConnection("c1")!.FolderId);
+    }
+
+    [Fact]
+    public void MoveConnection_RaisesChangedOnlyWhenSomethingMoved()
+    {
+        var store = Store(new FolderEntry("f1", "Prod"));
+        store.AddConnection(Conn("c1"));
+        var raised = 0;
+        store.Changed += (_, _) => raised++;
+
+        store.MoveConnection("c1", null);
+        Assert.Equal(0, raised);
+
+        store.MoveConnection("c1", "f1");
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void MoveFolder_NestsAndUnnests()
+    {
+        var store = Store(new FolderEntry("a", "A"), new FolderEntry("b", "B"));
+
+        store.MoveFolder("b", "a");
+        Assert.Equal("a", store.FindFolder("b")!.ParentId);
+
+        store.MoveFolder("b", null);
+        Assert.Null(store.FindFolder("b")!.ParentId);
+    }
+
+    [Fact]
+    public void MoveFolder_IntoItselfOrItsOwnSubfolderIsRefused()
+    {
+        var store = Store(new FolderEntry("a", "A"), new FolderEntry("b", "B", "a"), new FolderEntry("c", "C", "b"));
+
+        Assert.Throws<CatalogException>(() => store.MoveFolder("a", "a"));
+        Assert.Throws<CatalogException>(() => store.MoveFolder("a", "c"));
+        Assert.Null(store.FindFolder("a")!.ParentId);
+    }
+
+    [Fact]
+    public void CanMoveFolder_MatchesWhatMoveFolderAccepts()
+    {
+        var store = Store(new FolderEntry("a", "A"), new FolderEntry("b", "B", "a"), new FolderEntry("x", "X"));
+
+        Assert.True(store.CanMoveFolder("a", null));
+        Assert.True(store.CanMoveFolder("a", "x"));
+        Assert.True(store.CanMoveFolder("b", "x"));
+        Assert.False(store.CanMoveFolder("a", "a"));
+        Assert.False(store.CanMoveFolder("a", "b"));
+        Assert.False(store.CanMoveFolder("a", "missing"));
+        Assert.False(store.CanMoveFolder("missing", null));
+    }
 }
 
 public class CatalogStorageTests : IDisposable

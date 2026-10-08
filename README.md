@@ -180,6 +180,8 @@ The port defaults to 22. Host keys use trust on first use: unknown keys and chan
 
 Choose **Web page (http / https)** as the connection type to save the address of something with a web interface (a router, Proxmox, Grafana, a printer). Double-clicking it opens the page in a tab of the main window, titled with the page, with back, forward and reload buttons. Only `http` and `https` pages load; links that try to open files or other schemes are blocked, and "open in new window" links stay in the same tab. Sites keep their sign-in between visits in a separate browser profile (`WebView2Sites` in the data folder), apart from the terminals.
 
+**In a split layout:** when the current tab has several panes (for example the 2 x 2 grid) and one is empty, double-clicking a web connection puts the page in that pane, next to your terminals, instead of opening a new tab. It follows the pane when you drag a splitter or resize the window. A web pane can be split, closed (the pane stays, empty) and saved in a workspace like any other. Web panes are not part of the broadcast group. With no empty pane, or in a single-pane tab, it opens as a tab as before; "Open in new tab" always does.
+
 Devices often use a self-signed certificate. Tick **Accept this site's certificate even if it is not trusted** on that connection and the window loads it anyway, with a warning banner. The check is skipped only for that one connection; every other site is verified as usual. Web connections store no username or password.
 
 ### SSH agent

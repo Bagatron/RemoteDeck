@@ -56,6 +56,7 @@ public partial class MainWindow : Window
         _terminals.Focused += OnTerminalFocused;
         _terminals.RatioChanged += OnRatioChanged;
         _terminals.PaneAction += OnPaneAction;
+        _terminals.PaneBounds += OnPaneBounds;
 
         RefreshTree();
 
@@ -124,6 +125,13 @@ public partial class MainWindow : Window
     private WorkspaceTab? Current => SelectedTab is { IsEmbedded: false } tab ? tab : null;
 
     private readonly Dictionary<string, FrameworkElement> _webViews = new(StringComparer.Ordinal);
+
+    /// <summary>Browsers for web pages inside terminal panes, by the pane's terminal id.</summary>
+    private readonly Dictionary<string, WebPageView> _paneWebs = new(StringComparer.Ordinal);
+
+    private string? _boundsTab;
+
+    private IReadOnlyDictionary<string, Rect> _paneBounds = new Dictionary<string, Rect>();
 
     // ---- locking ----
 
@@ -323,7 +331,7 @@ public partial class MainWindow : Window
 
             if (string.Equals(entry.Type, "web", StringComparison.OrdinalIgnoreCase))
             {
-                OpenWebPage(entry);
+                OpenWebInPane(tab, session, entry);
                 continue;
             }
 
@@ -340,7 +348,7 @@ public partial class MainWindow : Window
 
         SyncTab(tab);
 
-        // Web pages in the workspace opened as tabs of their own; stay on the workspace tab.
+        // Remote Desktop sessions in the workspace opened as tabs of their own; stay on the workspace tab.
         if (!ReferenceEquals(TabStrip.SelectedItem, tab))
         {
             TabStrip.SelectedItem = tab;
@@ -769,6 +777,132 @@ public partial class MainWindow : Window
         return source as TreeViewItem;
     }
 
+    // ---- dragging connections and folders ----
+
+    private const string DragFormat = "RemoteDeck.TreeItem";
+
+    private Point _dragStart;
+    private object? _dragCandidate;
+    private TextBlock? _dropHighlight;
+
+    private bool CanDragInTree => string.IsNullOrWhiteSpace(SearchBox.Text);
+
+    private void Tree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStart = e.GetPosition(null);
+        _dragCandidate = CanDragInTree ? FindItem(e.OriginalSource as DependencyObject)?.Tag : null;
+    }
+
+    private void Tree_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _dragCandidate is null)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(null);
+        if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var dragged = _dragCandidate;
+        _dragCandidate = null;
+        try
+        {
+            DragDrop.DoDragDrop(Tree, new DataObject(DragFormat, dragged), DragDropEffects.Move);
+        }
+        finally
+        {
+            ClearDropHighlight();
+        }
+    }
+
+    /// <summary>Where a drop at this point would put the dragged item: a folder id, or null for the top level. Valid is false when it cannot go there.</summary>
+    private (bool Valid, string? FolderId, TextBlock? Highlight) DropTarget(DragEventArgs e)
+    {
+        if (e.Data.GetData(DragFormat) is not { } dragged || !CanDragInTree)
+        {
+            return (false, null, null);
+        }
+
+        var item = FindItem(e.OriginalSource as DependencyObject);
+        string? folderId = null;
+        TextBlock? highlight = null;
+        switch (item?.Tag)
+        {
+            case FolderEntry folder:
+                folderId = folder.Id;
+                highlight = item.Header as TextBlock;
+                break;
+            case ConnectionEntry connection:
+                // Dropping onto a connection puts the item next to it, in the same folder.
+                folderId = connection.FolderId;
+                break;
+        }
+
+        var valid = dragged switch
+        {
+            FolderEntry folder => _data.Store.CanMoveFolder(folder.Id, folderId),
+            ConnectionEntry => true,
+            _ => false,
+        };
+
+        return (valid, folderId, highlight);
+    }
+
+    private void Tree_DragOver(object sender, DragEventArgs e)
+    {
+        var (valid, _, highlight) = DropTarget(e);
+        e.Effects = valid ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+
+        if (!ReferenceEquals(_dropHighlight, highlight))
+        {
+            ClearDropHighlight();
+            if (valid && highlight is not null)
+            {
+                highlight.Background = (Brush)FindResource("PanelHover");
+                _dropHighlight = highlight;
+            }
+        }
+    }
+
+    private void Tree_DragLeave(object sender, DragEventArgs e) => ClearDropHighlight();
+
+    private void Tree_Drop(object sender, DragEventArgs e)
+    {
+        ClearDropHighlight();
+        var (valid, folderId, _) = DropTarget(e);
+        e.Handled = true;
+        if (!valid)
+        {
+            return;
+        }
+
+        switch (e.Data.GetData(DragFormat))
+        {
+            case FolderEntry folder:
+                Try(() => _data.Store.MoveFolder(folder.Id, folderId));
+                break;
+            case ConnectionEntry connection:
+                Try(() => _data.Store.MoveConnection(connection.Id, folderId));
+                break;
+        }
+
+        RefreshTree();
+    }
+
+    private void ClearDropHighlight()
+    {
+        if (_dropHighlight is not null)
+        {
+            _dropHighlight.Background = null;
+            _dropHighlight = null;
+        }
+    }
+
     private void Tree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         var item = FindItem(e.OriginalSource as DependencyObject);
@@ -1046,7 +1180,16 @@ public partial class MainWindow : Window
     {
         if (string.Equals(entry.Type, "web", StringComparison.OrdinalIgnoreCase))
         {
-            OpenWebPage(entry);
+            // In a layout with several panes, a web page takes an empty one like a terminal does.
+            if (!newTab && Current is { Sessions.Count: > 1 } layout && layout.PickEmptyPane() is { } emptyPane)
+            {
+                OpenWebInPane(layout, emptyPane, entry);
+            }
+            else
+            {
+                OpenWebPage(entry);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -1101,6 +1244,118 @@ public partial class MainWindow : Window
         _webViews[tab.Id] = view;
         WebHost.Children.Add(view);
         NewTab(tab);
+    }
+
+    /// <summary>Shows a saved web connection inside a pane of a terminal tab (for example one cell of a 2 x 2 grid).</summary>
+    private void OpenWebInPane(WorkspaceTab tab, PaneSession pane, ConnectionEntry entry)
+    {
+        if (!WebAddress.TryNormalize(entry.Host, entry.Port, out var address, out var error))
+        {
+            MessageBox.Show(this, error, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var untrusted = entry.Options is not null
+            && entry.Options.TryGetValue("acceptUntrustedCertificate", out var flag)
+            && string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+
+        // The buttons live in the pane header, and a note in its title says when the certificate is not being checked.
+        var note = untrusted ? " (certificate not checked)" : string.Empty;
+        var view = new WebPageView(address, untrusted) { Visibility = Visibility.Collapsed, ToolbarHidden = true };
+        view.TitleChanged += title =>
+        {
+            pane.Title = title + note;
+            SyncTab(tab);
+        };
+        // The browser's native window appears a moment after the control is shown; raise it once it exists.
+        view.BrowserReady += () => Dispatcher.InvokeAsync(() => RaiseBrowser(view));
+        view.SizeChanged += (_, _) => RaiseBrowser(view);
+        view.HistoryChanged += (back, forward) =>
+        {
+            pane.WebCanGoBack = back;
+            pane.WebCanGoForward = forward;
+            SyncTab(tab);
+        };
+
+        pane.WebPage = new WebPageInfo(entry.Name, address, untrusted);
+        pane.ConnectionId = entry.Id;
+        pane.Title = entry.Name + note;
+        pane.State = ConnectionState.Connected;
+        _paneWebs[pane.TerminalId] = view;
+        PaneWebHost.Children.Add(view);
+
+        // It stays hidden until the terminal page says where the pane is, then LayoutPaneWebs shows it there.
+        SyncTab(tab);
+        LayoutPaneWebs();
+    }
+
+    /// <summary>Removes the browser of a pane that shows a web page.</summary>
+    private void ReleaseWeb(PaneSession session)
+    {
+        session.WebPage = null;
+        session.WebCanGoBack = false;
+        session.WebCanGoForward = false;
+        if (_paneWebs.Remove(session.TerminalId, out var view))
+        {
+            PaneWebHost.Children.Remove(view);
+            view.Dispose();
+        }
+    }
+
+    private void OnPaneBounds(string tabId, IReadOnlyDictionary<string, Rect> bounds)
+    {
+        _boundsTab = tabId;
+        _paneBounds = bounds;
+        LayoutPaneWebs();
+    }
+
+    /// <summary>Puts each pane browser over its pane, and hides the ones whose tab is not showing.</summary>
+    private void LayoutPaneWebs()
+    {
+        var current = Current;
+        foreach (var (terminalId, view) in _paneWebs)
+        {
+            var owner = Find(terminalId).Tab;
+            if (current is not null
+                && ReferenceEquals(owner, current)
+                && _boundsTab == current.Id
+                && _paneBounds.TryGetValue(terminalId, out var rect)
+                && rect.Width >= 40
+                && rect.Height >= 40)
+            {
+                Canvas.SetLeft(view, rect.X);
+                Canvas.SetTop(view, rect.Y);
+                view.Width = rect.Width;
+                view.Height = rect.Height;
+                view.Visibility = Visibility.Visible;
+
+                RaiseBrowser(view);
+            }
+            else
+            {
+                view.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    /// <summary>Two native browser windows share a pane's area (the terminal page and the web page); this puts the web page's on top.</summary>
+    private static void RaiseBrowser(WebPageView view)
+    {
+        if (view.BrowserHandle != IntPtr.Zero)
+        {
+            NativeMethods.SetWindowPos(view.BrowserHandle, NativeMethods.HwndTop, 0, 0, 0, 0, NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoActivate);
+        }
+    }
+
+    private static class NativeMethods
+    {
+        public static readonly IntPtr HwndTop = IntPtr.Zero;
+        public const uint NoSize = 0x0001;
+        public const uint NoMove = 0x0002;
+        public const uint NoActivate = 0x0010;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     }
 
     /// <summary>
@@ -1534,6 +1789,7 @@ public partial class MainWindow : Window
             }
         }
 
+        LayoutPaneWebs();
         UpdateBroadcastUi();
     }
 
@@ -1541,6 +1797,7 @@ public partial class MainWindow : Window
     private void EndSession(WorkspaceTab tab, PaneSession session)
     {
         var connection = session.Connection;
+        ReleaseWeb(session);
         tab.Router.Unregister(session.TerminalId);
         session.Connection = null;
         session.Title = null;
@@ -1563,6 +1820,22 @@ public partial class MainWindow : Window
         var (tab, session) = Find(terminalId);
         if (tab is null || session is null)
         {
+            return;
+        }
+
+        if (action.StartsWith("web", StringComparison.Ordinal))
+        {
+            if (_paneWebs.TryGetValue(terminalId, out var web))
+            {
+                switch (action)
+                {
+                    case "webBack": web.GoBack(); break;
+                    case "webForward": web.GoForward(); break;
+                    case "webReload": web.Reload(); break;
+                    case "webExternal": web.OpenExternal(); break;
+                }
+            }
+
             return;
         }
 

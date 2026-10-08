@@ -35,7 +35,15 @@ public sealed class PaneSession
 
     public int Rows { get; set; } = 24;
 
-    public bool IsEmpty => Connection is null;
+    /// <summary>Set when this pane shows a web page instead of a terminal; the browser itself is owned by the window.</summary>
+    public WebPageInfo? WebPage { get; set; }
+
+    /// <summary>For a web pane: whether its browser can go back / forward (the header buttons follow these).</summary>
+    public bool WebCanGoBack { get; set; }
+
+    public bool WebCanGoForward { get; set; }
+
+    public bool IsEmpty => Connection is null && WebPage is null;
 
     /// <summary>Runs <paramref name="job"/> after everything queued before it for this pane.</summary>
     public void Enqueue(Func<Task> job)
@@ -337,6 +345,9 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
                 ["title"] = session.Title ?? string.Empty,
                 ["state"] = session.State.ToString(),
                 ["empty"] = session.IsEmpty,
+                ["web"] = session.WebPage is not null,
+                ["back"] = session.WebCanGoBack,
+                ["fwd"] = session.WebCanGoForward,
                 ["member"] = members.Contains(session.TerminalId),
             });
         }

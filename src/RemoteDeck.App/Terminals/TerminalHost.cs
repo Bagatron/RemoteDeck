@@ -42,6 +42,9 @@ public sealed class TerminalHost
     /// <summary>A pane header button was pressed: terminal id and the action ("member", "splitRight", "splitDown", "close").</summary>
     public event Action<string, string>? PaneAction;
 
+    /// <summary>Where each visible pane's body is, in device-independent pixels from the top left of the terminal page: tab id, then terminal id to rectangle.</summary>
+    public event Action<string, IReadOnlyDictionary<string, System.Windows.Rect>>? PaneBounds;
+
     /// <summary>An app shortcut was pressed while the terminal page had focus, e.g. "ctrl+shift+p".</summary>
     public event Action<string>? Shortcut;
 
@@ -208,6 +211,20 @@ public sealed class TerminalHost
             case "ratio":
                 var path = root.GetProperty("path").EnumerateArray().Select(p => p.GetInt32()).ToArray();
                 RatioChanged?.Invoke(root.GetProperty("tab").GetString()!, path, root.GetProperty("ratio").GetDouble());
+                break;
+
+            case "rects":
+                var bounds = new Dictionary<string, System.Windows.Rect>(StringComparer.Ordinal);
+                foreach (var item in root.GetProperty("rects").EnumerateArray())
+                {
+                    bounds[item.GetProperty("id").GetString()!] = new System.Windows.Rect(
+                        item.GetProperty("x").GetDouble(),
+                        item.GetProperty("y").GetDouble(),
+                        Math.Max(0, item.GetProperty("w").GetDouble()),
+                        Math.Max(0, item.GetProperty("h").GetDouble()));
+                }
+
+                PaneBounds?.Invoke(root.GetProperty("tab").GetString()!, bounds);
                 break;
 
             case "key":
