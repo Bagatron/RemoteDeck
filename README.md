@@ -107,7 +107,9 @@ var path = Path.Combine(
 VaultStorage.Save(vault, path);
 ```
 
-Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
+**Auto-lock:** after 15 minutes without use (change it with `Ctrl+Shift+P`, `auto-lock`: 5, 15, 60 minutes or never), when Windows locks, or with `Ctrl+Shift+L` (*Lock now*), RemoteDeck wipes the data key, hides its window and asks for the master password. Sessions that are already connected keep running, but saved passwords cannot be used until you unlock, so a dropped session will not reconnect while locked. Moving the mouse or typing inside a terminal counts as use.
+
+Not covered yet: Windows Hello/DPAPI unlock and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
 
 ## Themes
 
@@ -211,14 +213,14 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 
 1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC and web tabs, telnet and serial, and a git terminal (not scheduled; to be designed)
 2. Theme backdrop (Mica, acrylic) and shape for the standard controls
 3. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
-4. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
+4. Windows Hello / DPAPI unlock and clipboard clearing
 
 ## License
 

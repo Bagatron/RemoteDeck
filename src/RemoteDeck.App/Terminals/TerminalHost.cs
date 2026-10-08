@@ -45,6 +45,9 @@ public sealed class TerminalHost
     /// <summary>An app shortcut was pressed while the terminal page had focus, e.g. "ctrl+shift+p".</summary>
     public event Action<string>? Shortcut;
 
+    /// <summary>The user moved the mouse, scrolled or typed inside the terminal page (reported at most every few seconds).</summary>
+    public event Action? Activity;
+
     public async Task InitializeAsync()
     {
         var dataFolder = Path.Combine(
@@ -209,6 +212,10 @@ public sealed class TerminalHost
 
             case "key":
                 Shortcut?.Invoke(root.GetProperty("k").GetString() ?? string.Empty);
+                break;
+
+            case "activity":
+                Activity?.Invoke();
                 break;
 
             case "action":

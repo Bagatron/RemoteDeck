@@ -82,8 +82,12 @@ public partial class MainWindow : Window
             }
         };
 
+        StartAutoLock();
+
         Closed += (_, _) =>
         {
+            Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
+            _idleTimer?.Stop();
             App.Themes.Applied -= OnThemeApplied;
             _plugins.Dispose();
 
@@ -102,6 +106,117 @@ public partial class MainWindow : Window
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+
+    // ---- locking ----
+
+    private System.Windows.Threading.DispatcherTimer? _idleTimer;
+    private DateTime _lastActivity = DateTime.UtcNow;
+    private bool _locked;
+    private bool _closing;
+
+    /// <summary>Locks the vault after the configured idle time, and when Windows itself is locked.</summary>
+    private void StartAutoLock()
+    {
+        InputManager.Current.PreProcessInput += (_, e) =>
+        {
+            if (e.StagingItem.Input is MouseEventArgs or KeyboardEventArgs)
+            {
+                _lastActivity = DateTime.UtcNow;
+            }
+        };
+        _terminals.Activity += () => _lastActivity = DateTime.UtcNow;
+        Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+
+        _idleTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        _idleTimer.Tick += (_, _) =>
+        {
+            if (!_locked && RemoteDeck.Core.Security.AutoLock.IsDue(DateTime.UtcNow - _lastActivity, App.Settings.AutoLockMinutes))
+            {
+                LockNow();
+            }
+        };
+        _idleTimer.Start();
+        Closing += (_, _) => _closing = true;
+    }
+
+    private void OnSessionSwitch(object? sender, Microsoft.Win32.SessionSwitchEventArgs e)
+    {
+        if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLock)
+        {
+            Dispatcher.InvokeAsync(LockNow);
+        }
+    }
+
+    /// <summary>
+    /// Wipes the vault key, hides the window's contents and asks for the master password again. Sessions that are
+    /// already connected keep running; saved passwords cannot be used (or changed) until you unlock.
+    /// </summary>
+    private void LockNow()
+    {
+        if (_locked || _closing)
+        {
+            return;
+        }
+
+        _locked = true;
+        _data.Vault.Lock();
+        var content = (UIElement)Content;
+        content.Visibility = Visibility.Collapsed;
+        Title = "RemoteDeck (locked)";
+
+        while (!_closing)
+        {
+            var dialog = new UnlockDialog(creating: false) { Owner = this };
+            if (dialog.ShowDialog() != true)
+            {
+                if (MessageBox.Show(this, "Exit RemoteDeck? Open sessions will be closed.", "RemoteDeck", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                {
+                    Close();
+                    return;
+                }
+
+                continue;
+            }
+
+            try
+            {
+                _data.Vault.Unlock(dialog.Password.AsSpan());
+                break;
+            }
+            catch (InvalidMasterPasswordException)
+            {
+                MessageBox.Show(this, "That is not the master password.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        if (_closing)
+        {
+            return;
+        }
+
+        content.Visibility = Visibility.Visible;
+        Title = "RemoteDeck";
+        _locked = false;
+        _lastActivity = DateTime.UtcNow;
+        if (Current?.FocusedTerminalId is { } terminalId)
+        {
+            _terminals.FocusPane(terminalId);
+        }
+    }
+
+    private PaletteItem AutoLockItem(int minutes) =>
+        new(
+            (minutes == 0 ? "Auto-lock: never" : $"Auto-lock: after {minutes} minutes")
+                + (App.Settings.AutoLockMinutes == minutes ? " (current)" : string.Empty),
+            string.Empty,
+            () =>
+            {
+                App.Settings.AutoLockMinutes = minutes;
+                App.Settings.Save();
+                SetStatus(minutes == 0
+                    ? "Auto-lock is off. Ctrl+Shift+L still locks on demand."
+                    : $"RemoteDeck locks after {minutes} minutes without use, and when Windows locks.");
+            });
 
     // ---- plugins ----
 
@@ -288,6 +403,7 @@ public partial class MainWindow : Window
             Key.W => "w",
             Key.B => "b",
             Key.F => "f",
+            Key.L => "l",
             Key.Tab => "tab",
             _ => null,
         };
@@ -329,6 +445,9 @@ public partial class MainWindow : Window
                     BroadcastToggle_Click(BroadcastToggle, new RoutedEventArgs());
                 }
 
+                return true;
+            case "ctrl+shift+l":
+                LockNow();
                 return true;
             case "ctrl+shift+f":
                 SearchBox.Focus();
@@ -372,6 +491,11 @@ public partial class MainWindow : Window
             new("Search connections", "Ctrl+Shift+F", () => RunShortcut("ctrl+shift+f")),
             new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
+            new("Lock now", "Ctrl+Shift+L", LockNow),
+            AutoLockItem(5),
+            AutoLockItem(15),
+            AutoLockItem(60),
+            AutoLockItem(0),
             new("Open session logs folder", string.Empty, OpenLogsFolder),
             ScrollbackItem(1_000),
             ScrollbackItem(10_000),

@@ -16,6 +16,9 @@ internal sealed class AppSettings
     /// <summary>How many lines of output each terminal keeps to scroll back through.</summary>
     public int ScrollbackLines { get; set; } = DefaultScrollback;
 
+    /// <summary>Minutes of inactivity before the vault locks and the unlock prompt appears; 0 means never.</summary>
+    public int AutoLockMinutes { get; set; } = RemoteDeck.Core.Security.AutoLock.DefaultMinutes;
+
     /// <summary>Plugins the user turned on, with the permissions they approved for each (plugin id to permission names).</summary>
     public Dictionary<string, List<string>> Plugins { get; set; } = new();
 

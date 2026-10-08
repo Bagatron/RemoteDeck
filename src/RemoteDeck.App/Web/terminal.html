@@ -523,7 +523,7 @@
   // App shortcuts. They are caught before the terminal sees them and handled by the host, which also
   // owns the same list for when the WPF side has focus. Plain Ctrl+letter keys stay with the shell.
   const shortcuts = new Set([
-    "ctrl+shift+p", "ctrl+shift+t", "ctrl+shift+w", "ctrl+shift+b", "ctrl+shift+f", "ctrl+tab", "ctrl+shift+tab",
+    "ctrl+shift+p", "ctrl+shift+t", "ctrl+shift+w", "ctrl+shift+b", "ctrl+shift+f", "ctrl+shift+l", "ctrl+tab", "ctrl+shift+tab",
   ]);
   document.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
@@ -541,6 +541,17 @@
     e.stopPropagation();
     post({ t: "key", k: combo });
   }, true);
+
+  // Tells the host the user is here, so the vault does not lock while someone reads or scrolls a terminal.
+  let lastActivity = 0;
+  for (const type of ["mousemove", "mousedown", "wheel", "keydown"]) {
+    document.addEventListener(type, () => {
+      const now = Date.now();
+      if (now - lastActivity < 5000) return;
+      lastActivity = now;
+      post({ t: "activity" });
+    }, true);
+  }
 
   post({ t: "ready" });
 })();
