@@ -54,10 +54,11 @@
                 </Grid>
             </StackPanel>
             <Border DockPanel.Dock="Bottom" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-                <StackPanel Orientation="Horizontal">
+                <WrapPanel>
                     <Button x:Name="ThemeButton" Content="Theme  &#x25BE;" Padding="10,4" Click="ThemeButton_Click" />
-                    <Button Content="Import..." Padding="10,4" Margin="8,0,0,0" Click="Import_Click" />
-                </StackPanel>
+                    <Button Content="Import..." Padding="10,4" Margin="6,0,0,0" Click="Import_Click" />
+                    <Button x:Name="WorkspacesButton" Content="Workspaces  &#x25BE;" Padding="10,4" Margin="0,6,0,0" Click="WorkspacesButton_Click" />
+                </WrapPanel>
             </Border>
             <TreeView x:Name="Tree" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"

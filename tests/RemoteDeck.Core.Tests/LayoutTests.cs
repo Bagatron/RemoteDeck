@@ -235,3 +235,89 @@ public class LayoutTests
         }
     }
 }
+
+public class WorkspaceLibraryTests : IDisposable
+{
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), "rd-ws-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_folder, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    private static Workspace Sample(string name, string? connection = "web-01") =>
+        new(name, new PaneNode("p1", connection), "d", true);
+
+    [Fact]
+    public void SavedWorkspaces_AreFoundAgain()
+    {
+        var library = new WorkspaceLibrary(_folder);
+        library.Save(Sample("Prod web"));
+        library.Save(Sample("Alpha"));
+
+        var all = library.LoadAll();
+
+        Assert.Equal(new[] { "Alpha", "Prod web" }, all.Select(f => f.Workspace!.Name));
+        Assert.Equal("web-01", ((PaneNode)all[1].Workspace!.Layout).ConnectionId);
+    }
+
+    [Fact]
+    public void SavingTheSameNameAgain_ReplacesTheFile()
+    {
+        var library = new WorkspaceLibrary(_folder);
+        var first = library.Save(Sample("Prod", "a"));
+        var second = library.Save(Sample("prod", "b"));
+
+        Assert.Equal(first, second);
+        var only = Assert.Single(library.LoadAll());
+        Assert.Equal("b", ((PaneNode)only.Workspace!.Layout).ConnectionId);
+    }
+
+    [Fact]
+    public void UnsafeNames_BecomeSafeFileNames_AndDifferentNamesNeverShareAFile()
+    {
+        var library = new WorkspaceLibrary(_folder);
+        var a = library.Save(Sample("a/b:c"));
+        var b = library.Save(Sample("a-b-c"));
+
+        Assert.NotEqual(a, b);
+        Assert.Equal(_folder, Path.GetDirectoryName(a));
+        Assert.Equal(2, library.LoadAll().Count);
+    }
+
+    [Fact]
+    public void ADamagedFile_IsListedWithItsError()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path.Combine(_folder, "bad.json"), "{ nope");
+        var library = new WorkspaceLibrary(_folder);
+        library.Save(Sample("Good"));
+
+        var all = library.LoadAll();
+
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, f => f.Error is not null && f.Path.EndsWith("bad.json"));
+        Assert.Contains(all, f => f.Workspace?.Name == "Good");
+    }
+
+    [Fact]
+    public void Delete_RemovesTheFile_AndReportsAMissingOne()
+    {
+        var library = new WorkspaceLibrary(_folder);
+        library.Save(Sample("Gone"));
+
+        Assert.True(library.Delete("gone"));
+        Assert.False(library.Delete("gone"));
+        Assert.Empty(library.LoadAll());
+    }
+
+    [Fact]
+    public void ALibraryFolderThatDoesNotExistYet_IsJustEmpty() =>
+        Assert.Empty(new WorkspaceLibrary(_folder).LoadAll());
+}

@@ -88,6 +88,155 @@ public partial class MainWindow : Window
 
     private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
 
+    // ---- workspaces ----
+
+    private WorkspaceLibrary Library => _workspaces ??= new WorkspaceLibrary(AppPaths.Workspaces);
+
+    private WorkspaceLibrary? _workspaces;
+
+    private void SaveWorkspace()
+    {
+        if (Current is not { } tab)
+        {
+            MessageBox.Show(this, "Open a tab first; a workspace saves the current tab.", "Workspaces", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new NameDialog("Save workspace", "Name for this layout and its connections") { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var exists = Library.LoadAll().Any(f => string.Equals(f.Workspace?.Name, dialog.Value, StringComparison.OrdinalIgnoreCase));
+        if (exists && !Confirm($"A workspace named \"{dialog.Value}\" already exists. Replace it?"))
+        {
+            return;
+        }
+
+        try
+        {
+            var workspace = tab.ToWorkspace(dialog.Value);
+            Library.Save(workspace);
+            var saved = LayoutTree.Panes(workspace.Layout).Count(p => p.ConnectionId is not null);
+            SetStatus($"Saved workspace \"{dialog.Value}\" ({saved} connection(s)).");
+        }
+        catch (Exception ex) when (ex is LayoutException or IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, ex.Message, "Workspaces", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OpenWorkspace(Workspace workspace)
+    {
+        var panes = LayoutTree.Panes(workspace.Layout).ToList();
+        var wanted = panes
+            .Select(p => (Pane: p, Entry: p.ConnectionId is null ? null : _data.Store.FindConnection(p.ConnectionId)))
+            .ToList();
+        var missing = wanted.Count(w => w.Pane.ConnectionId is not null && w.Entry is null);
+        var connect = wanted.Where(w => w.Entry is not null).ToList();
+
+        if (connect.Count > 0 && !workspace.AutoConnect
+            && !Confirm($"Connect {connect.Count} session(s) now? Choose No to open just the layout."))
+        {
+            connect.Clear();
+        }
+
+        var tab = NewTab(new WorkspaceTab(workspace.Layout));
+        var members = workspace.BroadcastMembers?.ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>();
+        var sessions = tab.PanesWithIds().ToDictionary(p => p.PaneId, p => p.Session, StringComparer.Ordinal);
+
+        foreach (var (pane, entry) in connect)
+        {
+            var session = sessions[pane.Id];
+            if (string.Equals(entry!.Type, "rdp", StringComparison.OrdinalIgnoreCase))
+            {
+                LaunchRemoteDesktop(entry);
+                continue;
+            }
+
+            var definition = _data.Store.ResolveDefinition(entry.Id);
+            if (definition is null || !string.Equals(entry.Type, "ssh", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
+            _ = ConnectPaneAsync(tab, session, definition, broker, entry.Name, members.Contains(pane.Id));
+        }
+
+        SyncTab(tab);
+        SetStatus(missing > 0
+            ? $"Opened \"{workspace.Name}\"; {missing} connection(s) in it no longer exist."
+            : $"Opened \"{workspace.Name}\".");
+    }
+
+    private void WorkspacesButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = WorkspacesButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+        var files = Library.LoadAll();
+
+        foreach (var file in files.Where(f => f.Workspace is not null))
+        {
+            var workspace = file.Workspace!;
+            var item = new MenuItem { Header = workspace.Name };
+            item.Click += (_, _) => OpenWorkspace(workspace);
+            menu.Items.Add(item);
+        }
+
+        if (files.Count > 0)
+        {
+            menu.Items.Add(new Separator());
+        }
+
+        var save = new MenuItem { Header = "Save current tab as workspace..." };
+        save.Click += (_, _) => SaveWorkspace();
+        menu.Items.Add(save);
+
+        if (files.Any(f => f.Workspace is not null))
+        {
+            var delete = new MenuItem { Header = "Delete a workspace" };
+            foreach (var workspace in files.Where(f => f.Workspace is not null).Select(f => f.Workspace!))
+            {
+                var name = workspace.Name;
+                var entry = new MenuItem { Header = name };
+                entry.Click += (_, _) =>
+                {
+                    if (Confirm($"Delete the workspace \"{name}\"? Your connections are not affected."))
+                    {
+                        Library.Delete(name);
+                    }
+                };
+                delete.Items.Add(entry);
+            }
+
+            menu.Items.Add(delete);
+        }
+
+        var folder = new MenuItem { Header = "Open workspaces folder" };
+        folder.Click += (_, _) =>
+        {
+            Directory.CreateDirectory(AppPaths.Workspaces);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Workspaces}\"") { UseShellExecute = true });
+        };
+        menu.Items.Add(folder);
+
+        var broken = files.Where(f => f.Error is not null).ToList();
+        if (broken.Count > 0)
+        {
+            var problems = new MenuItem { Header = $"Workspace problems ({broken.Count})..." };
+            problems.Click += (_, _) => MessageBox.Show(
+                this,
+                string.Join("\n\n", broken.Select(b => $"{System.IO.Path.GetFileName(b.Path)}: {b.Error}")),
+                "Workspace problems",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            menu.Items.Add(problems);
+        }
+
+        menu.IsOpen = true;
+    }
+
     // ---- shortcuts and command palette ----
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -187,6 +336,7 @@ public partial class MainWindow : Window
             new("Previous tab", "Ctrl+Shift+Tab", () => StepTab(-1)),
             new("Toggle broadcast", "Ctrl+Shift+B", () => RunShortcut("ctrl+shift+b")),
             new("Search connections", "Ctrl+Shift+F", () => RunShortcut("ctrl+shift+f")),
+            new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
             new("Reload themes", string.Empty, () => App.Themes.Reload()),
         };
@@ -198,6 +348,12 @@ public partial class MainWindow : Window
                 "Layout: " + System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", " "),
                 string.Empty,
                 () => Preset_Click(new MenuItem { Tag = name }, new RoutedEventArgs())));
+        }
+
+        foreach (var file in Library.LoadAll().Where(f => f.Workspace is not null))
+        {
+            var workspace = file.Workspace!;
+            actions.Add(new PaletteItem("Workspace: " + workspace.Name, workspace.Description ?? string.Empty, () => OpenWorkspace(workspace)));
         }
 
         foreach (var theme in App.Themes.Themes)
@@ -753,11 +909,29 @@ public partial class MainWindow : Window
             pane = tab.Sessions[0];
         }
 
+        await ConnectPaneAsync(tab, pane, definition, broker, title, member: false);
+    }
+
+    /// <summary>Starts an SSH session in a specific pane and wires its output, state and broadcast membership.</summary>
+    private async Task ConnectPaneAsync(
+        WorkspaceTab tab,
+        PaneSession pane,
+        ConnectionDefinition definition,
+        ICredentialBroker broker,
+        string title,
+        bool member)
+    {
         var connection = (ITerminalConnection)_ssh.Create(definition, broker);
+        pane.ConnectionId = _data.Store.FindConnection(definition.Id) is null ? null : definition.Id;
         pane.Connection = connection;
         pane.Title = title;
         pane.State = ConnectionState.Connecting;
         tab.Router.Register(pane.TerminalId, connection);
+        if (member)
+        {
+            tab.Router.SetMember(pane.TerminalId, true);
+        }
+
         tab.FocusedTerminalId = pane.TerminalId;
 
         connection.StateChanged += (_, state) => Dispatcher.InvokeAsync(() =>
@@ -808,9 +982,10 @@ public partial class MainWindow : Window
 
     // ---- tabs, panes and layouts ----
 
-    private WorkspaceTab NewTab(LayoutPreset preset)
+    private WorkspaceTab NewTab(LayoutPreset preset) => NewTab(new WorkspaceTab(preset));
+
+    private WorkspaceTab NewTab(WorkspaceTab tab)
     {
-        var tab = new WorkspaceTab(preset);
         tab.Router.StateChanged += (_, _) => Dispatcher.InvokeAsync(() =>
         {
             if (Tabs.Contains(tab))

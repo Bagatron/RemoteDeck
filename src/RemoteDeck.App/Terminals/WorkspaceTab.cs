@@ -23,6 +23,9 @@ public sealed class PaneSession
 
     public string? Title { get; set; }
 
+    /// <summary>The saved connection this pane was opened from; null for a quick connection or an empty pane.</summary>
+    public string? ConnectionId { get; set; }
+
     public ITerminalConnection? Connection { get; set; }
 
     public ConnectionState State { get; set; } = ConnectionState.Disconnected;
@@ -71,8 +74,14 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
     private int _nextPane;
 
     public WorkspaceTab(LayoutPreset preset = LayoutPreset.Single)
+        : this(LayoutPresets.Create(preset))
     {
-        _root = LayoutPresets.Create(preset);
+    }
+
+    /// <summary>A tab with an existing layout (a saved workspace). Every pane starts empty.</summary>
+    public WorkspaceTab(LayoutNode root)
+    {
+        _root = root;
         foreach (var pane in LayoutTree.Panes(_root))
         {
             _panes[pane.Id] = new PaneSession();
@@ -217,6 +226,32 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
         _nextPane = HighestPaneNumber();
         return queue.ToArray();
     }
+
+    /// <summary>
+    /// Captures this tab as a workspace: the layout, which saved connection is in each pane, and which panes are in the
+    /// broadcast group. Broadcast itself is never saved as on.
+    /// </summary>
+    public Workspace ToWorkspace(string name, string? description = null)
+    {
+        var layout = _root;
+        var members = new List<string>();
+        var inGroup = Router.Members.ToHashSet(StringComparer.Ordinal);
+        foreach (var pane in LayoutTree.Panes(_root))
+        {
+            var session = _panes[pane.Id];
+            layout = LayoutTree.AssignConnection(layout, pane.Id, session.IsEmpty ? null : session.ConnectionId);
+            if (inGroup.Contains(session.TerminalId))
+            {
+                members.Add(pane.Id);
+            }
+        }
+
+        return new Workspace(name, layout, description, AutoConnect: true, BroadcastMembers: members.Count > 0 ? members : null);
+    }
+
+    /// <summary>The pane ids and sessions in visual order, so a saved layout can be matched to its panes.</summary>
+    public IReadOnlyList<(string PaneId, PaneSession Session)> PanesWithIds() =>
+        LayoutTree.Panes(_root).Select(p => (p.Id, _panes[p.Id])).ToArray();
 
     /// <summary>The message that makes the page show this tab's current layout and pane details.</summary>
     public JsonObject ToSync()
