@@ -73,6 +73,8 @@ public partial class ConnectionDialog : Window
             KeyBox.Text = Option(existing, "privateKeyPath");
             ReconnectBox.IsChecked = string.Equals(Option(existing, "autoReconnect"), "true", StringComparison.OrdinalIgnoreCase);
             AgentBox.IsChecked = string.Equals(Option(existing, "useAgent"), "true", StringComparison.OrdinalIgnoreCase);
+            CertBox.IsChecked = string.Equals(Option(existing, "acceptUntrustedCertificate"), "true", StringComparison.OrdinalIgnoreCase);
+            ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
             ForwardsBox.Text = Option(existing, "forwards").Replace("\n", Environment.NewLine);
             FavoriteBox.IsChecked = existing.Favorite;
@@ -99,18 +101,28 @@ public partial class ConnectionDialog : Window
 
     private bool IsSsh => SelectedType == "ssh";
 
+    private bool IsWeb => SelectedType == "web";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null)
         {
             return;
         }
 
+        LoginPanel.Visibility = IsWeb ? Visibility.Collapsed : Visibility.Visible;
+        WebPanel.Visibility = IsWeb ? Visibility.Visible : Visibility.Collapsed;
+        RdpPanel.Visibility = IsRdp ? Visibility.Visible : Visibility.Collapsed;
+
+        // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
+        SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
+        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : "Host";
+
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
-        PortBox.ToolTip = IsRdp ? "Leave empty for 3389" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
+        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -155,6 +167,12 @@ public partial class ConnectionDialog : Window
             }
 
             port = parsed;
+        }
+
+        if (IsWeb && !WebAddress.TryNormalize(host, port, out _, out var webError))
+        {
+            Warn(webError);
+            return;
         }
 
         var key = IsSsh ? KeyBox.Text.Trim() : string.Empty;
@@ -211,6 +229,24 @@ public partial class ConnectionDialog : Window
             options.Remove("forwards");
         }
 
+        if (IsWeb && CertBox.IsChecked == true)
+        {
+            options["acceptUntrustedCertificate"] = "true";
+        }
+        else
+        {
+            options.Remove("acceptUntrustedCertificate");
+        }
+
+        if (IsRdp && ExternalBox.IsChecked == true)
+        {
+            options["externalClient"] = "true";
+        }
+        else
+        {
+            options.Remove("externalClient");
+        }
+
         if (IsSsh && ReconnectBox.IsChecked == true)
         {
             options["autoReconnect"] = "true";
@@ -257,7 +293,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp ? string.Empty : PasswordBox.Password;
+        Password = IsRdp || IsWeb ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

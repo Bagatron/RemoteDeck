@@ -66,7 +66,17 @@ public sealed class PaneSession
     }
 }
 
-/// <summary>A tab: a split layout of panes, each holding at most one session, plus the tab's broadcast group.</summary>
+/// <summary>A saved Remote Desktop connection shown in a tab. The password is never part of it.</summary>
+public sealed record RdpInfo(string Name, string Host, int Port, string? User, string? Domain);
+
+/// <summary>A saved web connection shown in a tab instead of terminal panes.</summary>
+public sealed record WebPageInfo(string Name, Uri Address, bool AcceptUntrustedCertificate);
+
+/// <summary>
+/// A tab: a split layout of panes, each holding at most one session, plus the tab's broadcast group.
+/// A web tab has the same shape (one empty pane that is never shown) so the rest of the app can treat it as a tab;
+/// <see cref="WebPage"/> says it is one.
+/// </summary>
 public sealed class WorkspaceTab : INotifyPropertyChanged
 {
     private LayoutNode _root;
@@ -77,6 +87,32 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
         : this(LayoutPresets.Create(preset))
     {
     }
+
+    /// <summary>A tab that shows a web page.</summary>
+    public WorkspaceTab(WebPageInfo webPage)
+        : this(LayoutPreset.Single)
+    {
+        WebPage = webPage;
+    }
+
+    /// <summary>A tab that shows a Remote Desktop session.</summary>
+    public WorkspaceTab(RdpInfo rdp)
+        : this(LayoutPreset.Single)
+    {
+        Rdp = rdp;
+    }
+
+    /// <summary>Set for a web tab; null otherwise.</summary>
+    public WebPageInfo? WebPage { get; }
+
+    /// <summary>Set for a Remote Desktop tab; null otherwise.</summary>
+    public RdpInfo? Rdp { get; }
+
+    /// <summary>True for a tab that shows a web page or a remote desktop instead of terminal panes.</summary>
+    public bool IsEmbedded => WebPage is not null || Rdp is not null;
+
+    /// <summary>The page's own title once it has loaded, shown on a web tab.</summary>
+    public string? WebTitle { get; set; }
 
     /// <summary>A tab with an existing layout (a saved workspace). Every pane starts empty.</summary>
     public WorkspaceTab(LayoutNode root)
@@ -108,6 +144,16 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
     {
         get
         {
+            if (Rdp is not null)
+            {
+                return Rdp.Name;
+            }
+
+            if (WebPage is not null)
+            {
+                return string.IsNullOrWhiteSpace(WebTitle) ? WebPage.Name : WebTitle;
+            }
+
             var active = Sessions.Where(s => !s.IsEmpty).ToList();
             return active.Count switch
             {
@@ -122,6 +168,16 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
     {
         get
         {
+            if (Rdp is not null)
+            {
+                return Brushes.MediumPurple;
+            }
+
+            if (WebPage is not null)
+            {
+                return Brushes.SteelBlue;
+            }
+
             var first = Sessions.FirstOrDefault(s => !s.IsEmpty);
             return first?.State switch
             {

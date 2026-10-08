@@ -133,7 +133,7 @@ The first start asks you to create a master password; after that it asks for it 
 - **Split panes:** the `Layout` button switches the current tab to a preset (two columns, 2 x 2 grid, and so on). Each pane header has buttons to split right or down. Drag the bars between panes to resize them. A saved connection opens in the focused empty pane, or in a new tab if none is empty; use right-click, `Open in new tab` to force a new tab. The x in a pane header ends its session, and a second click on an empty pane removes it.
 - **Broadcast:** click the broadcast icon in each pane header you want in the group, then either switch on `Broadcast` (whatever you type in a grouped pane goes to all of them; the panes get a red border) or type a command in the bar and press Enter to run it on every grouped pane. Multi-line pastes and risky commands such as `rm -rf` or `shutdown` ask for confirmation first. Broadcast always starts off.
 - **Quick connect:** type `user@host` (or `user@host:port`) above the tabs for a one-off connection that is not saved.
-- **Remote Desktop:** a connection of type RDP (add one with `+ Connection`, or import an `.rdp`/RDCMan/mRemoteNG file) opens in the Windows Remote Desktop client, which asks for the password itself. RemoteDeck stores no password for RDP and passes none on. An embedded RDP tab is planned.
+- **Remote Desktop:** a connection of type RDP (add one with `+ Connection`, or import an `.rdp`/RDCMan/mRemoteNG file) opens in a tab of the main window, using the Windows Remote Desktop control that ships with Windows. RemoteDeck asks for the password each time and hands it straight to the session; it is never saved. The remote desktop follows the tab's size, and a bar above it shows the status with a Disconnect / Reconnect button. Because the control is a native window, it always draws above anything that overlaps it inside the main window (menus and dialogs open in their own windows, so they are fine). Tick *Open in the Windows Remote Desktop app instead of a tab* on a connection to use `mstsc` as before; that is also the fallback if the control is missing. Keyboard shortcuts such as `Ctrl+Shift+L` do not reach the app while the remote desktop has focus; click a tab first.
 - **Files (SFTP):** right-click an SSH connection, `Browse files (SFTP)` (or type `sftp` and a name in the palette). A file window opens for the same server, with the same saved password and host-key check. Double-click a folder to open it; `Upload files...`, `Upload folder...`, drag files in from Explorer, `Download`, `New folder`, `Rename`, `Delete` (folders are deleted with their contents, after a confirmation). Transfers can be cancelled.
 - **Workspaces:** open a tab the way you like it (layout, connections in their panes, which panes are in the broadcast group), then `Workspaces`, `Save current tab as workspace...` (or the same command in the palette). Opening a saved workspace puts it in a new tab and connects every pane. Broadcast always starts off. Workspaces are plain JSON files in `%LOCALAPPDATA%\RemoteDeck\workspaces` (see `workspaces/` for examples and `schemas/` for the format); they refer to connections by id, so a connection you deleted is reported and left out.
 - **Command palette:** `Ctrl+Shift+P` searches saved connections and actions (new tab, layouts, broadcast, themes, import). Type, arrow keys, Enter.
@@ -164,6 +164,12 @@ Connections of type `ssh` use these options (all optional, set in the connection
 | `proxyJump` | none | Id of another saved SSH connection to tunnel through (choose it as the **Jump host** in the connection dialog) |
 
 The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
+
+### Web pages
+
+Choose **Web page (http / https)** as the connection type to save the address of something with a web interface (a router, Proxmox, Grafana, a printer). Double-clicking it opens the page in a tab of the main window, titled with the page, with back, forward and reload buttons. Only `http` and `https` pages load; links that try to open files or other schemes are blocked, and "open in new window" links stay in the same tab. Sites keep their sign-in between visits in a separate browser profile (`WebView2Sites` in the data folder), apart from the terminals.
+
+Devices often use a self-signed certificate. Tick **Accept this site's certificate even if it is not trusted** on that connection and the window loads it anyway, with a warning banner. The check is skipped only for that one connection; every other site is verified as usual. Web connections store no username or password.
 
 ### SSH agent
 
@@ -213,11 +219,11 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 
-1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC and web tabs, telnet and serial, and a git terminal (not scheduled; to be designed)
+1. More connection types: VNC, telnet and serial, and a git terminal (not scheduled; to be designed)
 2. Theme backdrop (Mica, acrylic) and shape for the standard controls
 3. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
 4. Windows Hello / DPAPI unlock and clipboard clearing

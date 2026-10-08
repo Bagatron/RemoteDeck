@@ -15,6 +15,7 @@ The credential vault (Argon2id key derivation, AES-256-GCM encryption, format ve
 - A master password typed into the unlock dialog lives in a .NET string for a short time and cannot be wiped from memory.
 - There is no recovery for a forgotten master password.
 - SSH host keys are trusted on first use and stored in `%LOCALAPPDATA%\RemoteDeck\known_hosts.json`; a changed key always asks before it is replaced.
+- Plugins run in-process with your Windows account's access. The `useCredentials` permission is enforced, but `network`, `fileSystem` and `launchProcess` are declarations only. A plugin is off until you approve it; turn on only plugins you trust.
 - Importers never read stored passwords from other tools. RDP connections open in the Windows client, which handles the password itself.
 - Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing are not implemented yet.
 

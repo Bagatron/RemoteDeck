@@ -15,6 +15,7 @@ internal static class AppPaths
 
     public static string Vault => Path.Combine(Folder, "vault.json");
 
+
     public static string Connections => Path.Combine(Folder, "connections.json");
 
     public static string Settings => Path.Combine(Folder, "settings.json");

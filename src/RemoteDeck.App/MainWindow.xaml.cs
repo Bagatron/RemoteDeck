@@ -91,6 +91,11 @@ public partial class MainWindow : Window
             App.Themes.Applied -= OnThemeApplied;
             _plugins.Dispose();
 
+            foreach (var view in _webViews.Values)
+            {
+                (view as IDisposable)?.Dispose();
+            }
+
             foreach (var tab in Tabs.ToArray())
             {
                 foreach (var session in tab.Sessions)
@@ -105,7 +110,13 @@ public partial class MainWindow : Window
 
     public ObservableCollection<WorkspaceTab> Tabs { get; } = new();
 
-    private WorkspaceTab? Current => TabStrip.SelectedItem as WorkspaceTab;
+    /// <summary>The selected tab, whatever kind it is.</summary>
+    private WorkspaceTab? SelectedTab => TabStrip.SelectedItem as WorkspaceTab;
+
+    /// <summary>The selected terminal tab; null when nothing is selected or a web tab is. Terminal actions use this.</summary>
+    private WorkspaceTab? Current => SelectedTab is { IsEmbedded: false } tab ? tab : null;
+
+    private readonly Dictionary<string, FrameworkElement> _webViews = new(StringComparer.Ordinal);
 
     // ---- locking ----
 
@@ -299,7 +310,13 @@ public partial class MainWindow : Window
             var session = sessions[pane.Id];
             if (string.Equals(entry!.Type, "rdp", StringComparison.OrdinalIgnoreCase))
             {
-                LaunchRemoteDesktop(entry);
+                OpenRemoteDesktop(entry);
+                continue;
+            }
+
+            if (string.Equals(entry.Type, "web", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenWebPage(entry);
                 continue;
             }
 
@@ -315,6 +332,13 @@ public partial class MainWindow : Window
         }
 
         SyncTab(tab);
+
+        // Web pages in the workspace opened as tabs of their own; stay on the workspace tab.
+        if (!ReferenceEquals(TabStrip.SelectedItem, tab))
+        {
+            TabStrip.SelectedItem = tab;
+        }
+
         SetStatus(missing > 0
             ? $"Opened \"{workspace.Name}\"; {missing} connection(s) in it no longer exist."
             : $"Opened \"{workspace.Name}\".");
@@ -426,7 +450,7 @@ public partial class MainWindow : Window
                 NewTab(LayoutPreset.Single);
                 return true;
             case "ctrl+shift+w":
-                if (Current is { } tab)
+                if (SelectedTab is { } tab)
                 {
                     CloseTab(tab);
                 }
@@ -1007,9 +1031,15 @@ public partial class MainWindow : Window
 
     private Task OpenSavedAsync(ConnectionEntry entry, bool newTab = false)
     {
+        if (string.Equals(entry.Type, "web", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenWebPage(entry);
+            return Task.CompletedTask;
+        }
+
         if (string.Equals(entry.Type, "rdp", StringComparison.OrdinalIgnoreCase))
         {
-            LaunchRemoteDesktop(entry);
+            OpenRemoteDesktop(entry);
             return Task.CompletedTask;
         }
 
@@ -1018,7 +1048,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                $"\"{entry.Type}\" connections can't be opened. Built in: SSH and RDP. Other types come from plugins, which may be turned off (see Plugins).",
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
                 "RemoteDeck",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -1033,6 +1063,64 @@ public partial class MainWindow : Window
 
         var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
         return StartSessionAsync(definition, broker, entry.Name, newTab, factory);
+    }
+
+    /// <summary>Opens a saved web connection in a tab of its own.</summary>
+    private void OpenWebPage(ConnectionEntry entry)
+    {
+        if (!WebAddress.TryNormalize(entry.Host, entry.Port, out var address, out var error))
+        {
+            MessageBox.Show(this, error, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var untrusted = entry.Options is not null
+            && entry.Options.TryGetValue("acceptUntrustedCertificate", out var flag)
+            && string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+
+        var tab = new WorkspaceTab(new WebPageInfo(entry.Name, address, untrusted));
+        var view = new WebPageView(address, untrusted) { Visibility = Visibility.Collapsed };
+        view.TitleChanged += title =>
+        {
+            tab.WebTitle = title;
+            tab.Refresh();
+        };
+        _webViews[tab.Id] = view;
+        WebHost.Children.Add(view);
+        NewTab(tab);
+    }
+
+    /// <summary>
+    /// Opens a saved Remote Desktop connection in a tab, asking for the password (which is not saved). Falls back to the
+    /// Windows Remote Desktop app when the connection is set to use it or the embedded control is not available.
+    /// </summary>
+    private void OpenRemoteDesktop(ConnectionEntry entry)
+    {
+        var external = entry.Options is not null
+            && entry.Options.TryGetValue("externalClient", out var flag)
+            && string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+        if (external || !RdpSessionView.IsAvailable)
+        {
+            LaunchRemoteDesktop(entry);
+            return;
+        }
+
+        var user = entry.Options is not null && entry.Options.TryGetValue("username", out var u) ? u : string.Empty;
+        var domain = entry.Options is not null && entry.Options.TryGetValue("domain", out var d) ? d : null;
+
+        var prompt = new RdpPasswordDialog(user, entry.Host) { Owner = this };
+        if (prompt.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var info = new RdpInfo(entry.Name, entry.Host, entry.Port ?? 3389, user.Length > 0 ? user : null, domain);
+        var tab = new WorkspaceTab(info);
+        var view = new RdpSessionView(info, prompt.Password) { Visibility = Visibility.Collapsed };
+        _webViews[tab.Id] = view;
+        WebHost.Children.Add(view);
+        NewTab(tab);
+        SetStatus($"Opened {entry.Name} in a tab.");
     }
 
     /// <summary>Opens the connection in the Windows Remote Desktop client. It asks for the password itself, so none is passed on.</summary>
@@ -1329,7 +1417,11 @@ public partial class MainWindow : Window
         });
 
         // The page must know the tab before it is told to show it.
-        _terminals.Sync(tab);
+        if (!tab.IsEmbedded)
+        {
+            _terminals.Sync(tab);
+        }
+
         Tabs.Add(tab);
         TabStrip.SelectedItem = tab;
         return tab;
@@ -1338,7 +1430,10 @@ public partial class MainWindow : Window
     private void SyncTab(WorkspaceTab tab)
     {
         tab.Refresh();
-        _terminals.Sync(tab);
+        if (!tab.IsEmbedded)
+        {
+            _terminals.Sync(tab);
+        }
     }
 
     private void NewTab_Click(object sender, RoutedEventArgs e) => NewTab(LayoutPreset.Single);
@@ -1368,7 +1463,15 @@ public partial class MainWindow : Window
 
         tab.Router.Reset();
         Tabs.Remove(tab);
-        _terminals.CloseTab(tab.Id);
+        if (_webViews.Remove(tab.Id, out var webView))
+        {
+            WebHost.Children.Remove(webView);
+            (webView as IDisposable)?.Dispose();
+        }
+        else
+        {
+            _terminals.CloseTab(tab.Id);
+        }
 
         if (Tabs.Count > 0)
         {
@@ -1382,9 +1485,25 @@ public partial class MainWindow : Window
 
     private void TabStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (Current is { } tab)
+        foreach (var view in _webViews.Values)
         {
-            _terminals.ShowTab(tab.Id);
+            view.Visibility = Visibility.Collapsed;
+        }
+
+        if (SelectedTab is { IsEmbedded: true } webTab && _webViews.TryGetValue(webTab.Id, out var shown))
+        {
+            Web.Visibility = Visibility.Collapsed;
+            WebHost.Visibility = Visibility.Visible;
+            shown.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            WebHost.Visibility = Visibility.Collapsed;
+            Web.Visibility = Visibility.Visible;
+            if (Current is { } tab)
+            {
+                _terminals.ShowTab(tab.Id);
+            }
         }
 
         UpdateBroadcastUi();
