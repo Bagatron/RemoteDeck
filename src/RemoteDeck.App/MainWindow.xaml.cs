@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     internal MainWindow(AppData data)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this, capMaximum: false);
         DataContext = this;
         _data = data;
 

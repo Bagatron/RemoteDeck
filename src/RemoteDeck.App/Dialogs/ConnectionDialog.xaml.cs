@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -21,6 +22,7 @@ public partial class ConnectionDialog : Window
     internal ConnectionDialog(ConnectionStore store, ConnectionEntry? existing, string? defaultFolderId)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this);
         _existing = existing;
         Title = existing is null ? "New connection" : "Edit connection";
 

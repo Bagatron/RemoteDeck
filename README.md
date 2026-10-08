@@ -23,6 +23,8 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `themes/`, `workspaces/` | Example theme and workspace files. |
 | `schemas/` | JSON Schemas for themes, workspaces and `plugin.json` (add `"$schema"` to a file for editor autocomplete). |
 
+Windows are kept within the screen: dialogs scroll (with Save and Cancel always visible) and the main window opens smaller on small or heavily zoomed displays, so nothing falls off the bottom.
+
 ## Install
 
 Download a zip from the [Releases](../../releases) page and unzip it anywhere. There is no installer, and RemoteDeck keeps its data in `%LOCALAPPDATA%\RemoteDeck`.

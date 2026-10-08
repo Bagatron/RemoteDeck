@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Windows;
 
 namespace RemoteDeck.App.Dialogs;
@@ -8,6 +9,7 @@ public partial class NameDialog : Window
     public NameDialog(string title, string prompt, string initial = "")
     {
         InitializeComponent();
+        WindowFit.ToScreen(this);
         Title = title;
         Prompt.Text = prompt;
         NameBox.Text = initial;

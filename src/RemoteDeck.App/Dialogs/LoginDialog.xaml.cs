@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Windows;
 using Microsoft.Win32;
 
@@ -8,6 +9,7 @@ public partial class LoginDialog : Window
     public LoginDialog(string user, string host)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this);
         Heading.Text = $"Connect to {host} as {user}";
         Loaded += (_, _) => PasswordBox.Focus();
     }

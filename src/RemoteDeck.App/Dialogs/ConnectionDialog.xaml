@@ -4,7 +4,15 @@
         Width="460" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{StaticResource Back}" Foreground="{StaticResource Text}">
-    <StackPanel Margin="20">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- The form scrolls when the screen is too small for all of it; Save and Cancel stay in view. -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel Margin="0,0,10,0">
         <TextBlock Text="Type" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
         <ComboBox x:Name="TypeBox" Padding="6,5" SelectionChanged="TypeBox_SelectionChanged">
             <ComboBoxItem Content="SSH" Tag="ssh" />
@@ -91,9 +99,12 @@
 
         <CheckBox x:Name="FavoriteBox" Content="Favorite" Margin="0,12,0,0" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button Content="Save" IsDefault="True" Padding="18,5" Margin="0,0,8,0" Click="Save_Click" />
             <Button Content="Cancel" IsCancel="True" Padding="18,5" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

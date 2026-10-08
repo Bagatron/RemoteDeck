@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Windows;
 
 namespace RemoteDeck.App.Dialogs;
@@ -11,6 +12,7 @@ public partial class UnlockDialog : Window
     public UnlockDialog(bool creating)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this);
         _creating = creating;
 
         if (creating)

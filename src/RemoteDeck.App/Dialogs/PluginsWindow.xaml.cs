@@ -26,6 +26,7 @@ public partial class PluginsWindow : Window
     internal PluginsWindow(Window owner, PluginManager plugins)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this, capMaximum: false);
         Owner = owner;
         _plugins = plugins;
         Reload();

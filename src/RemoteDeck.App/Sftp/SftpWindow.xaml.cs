@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -52,6 +53,7 @@ public partial class SftpWindow : Window
     internal SftpWindow(Window owner, string title, SftpSession session)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this, capMaximum: false);
         Owner = owner;
         Title = "SFTP - " + title;
         _session = session;

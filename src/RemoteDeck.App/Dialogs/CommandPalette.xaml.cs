@@ -1,3 +1,4 @@
+using RemoteDeck.App.Services;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,6 +17,7 @@ public sealed partial class CommandPalette : Window
     public CommandPalette(Window owner, Func<string, IReadOnlyList<PaletteItem>> source)
     {
         InitializeComponent();
+        WindowFit.ToScreen(this);
         Owner = owner;
         _source = source;
         Left = owner.Left + ((owner.ActualWidth - Width) / 2);
