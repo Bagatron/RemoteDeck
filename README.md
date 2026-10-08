@@ -165,6 +165,12 @@ Connections of type `ssh` use these options (all optional, set in the connection
 
 The port defaults to 22. Host keys use trust on first use: unknown keys and changed keys always ask, and with no prompt available they are refused. Trusted keys are remembered per host and port in `known_hosts.json`.
 
+### Web pages
+
+Choose **Web page (http / https)** as the connection type to save the address of something with a web interface (a router, Proxmox, Grafana, a printer). Double-clicking it opens the page in a tab of the main window, titled with the page, with back, forward and reload buttons. Only `http` and `https` pages load; links that try to open files or other schemes are blocked, and "open in new window" links stay in the same tab. Sites keep their sign-in between visits in a separate browser profile (`WebView2Sites` in the data folder), apart from the terminals.
+
+Devices often use a self-signed certificate. Tick **Accept this site's certificate even if it is not trusted** on that connection and the window loads it anyway, with a warning banner. The check is skipped only for that one connection; every other site is verified as usual. Web connections store no username or password.
+
 ### SSH agent
 
 Tick **Use keys from the SSH agent** in the connection dialog and RemoteDeck asks a running agent to sign the login, so you need no key file path and no passphrase prompt. It tries the Windows OpenSSH agent first (start the *OpenSSH Authentication Agent* service, then `ssh-add C:\Users\you\.ssh\id_ed25519`), then Pageant. The agent does the signing: the private key never enters RemoteDeck. Jump hosts can use the agent too. Agent support comes from the MIT-licensed [SshNet.Agent](https://github.com/darinkes/SshNet.Agent) package; ed25519, ECDSA and RSA (SHA-2) keys work.
@@ -213,11 +219,11 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, CI.
 
 Next, in no fixed order:
 
-1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC and web tabs, telnet and serial, and a git terminal (not scheduled; to be designed)
+1. More connection types: RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design), VNC, telnet and serial, and a git terminal (not scheduled; to be designed)
 2. Theme backdrop (Mica, acrylic) and shape for the standard controls
 3. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
 4. Windows Hello / DPAPI unlock and clipboard clearing

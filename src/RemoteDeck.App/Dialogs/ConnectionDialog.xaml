@@ -9,6 +9,7 @@
         <ComboBox x:Name="TypeBox" Padding="6,5" SelectionChanged="TypeBox_SelectionChanged">
             <ComboBoxItem Content="SSH" Tag="ssh" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
+            <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
 
         <TextBlock Text="Name" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
@@ -20,7 +21,7 @@
                 <ColumnDefinition Width="90" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="Host" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+                <TextBlock x:Name="HostLabel" Text="Host" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
                 <TextBox x:Name="HostBox" Padding="6,5" />
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="8,0,0,0">
@@ -29,6 +30,7 @@
             </StackPanel>
         </Grid>
 
+        <StackPanel x:Name="LoginPanel">
         <TextBlock Text="Username" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <TextBox x:Name="UserBox" Padding="6,5" />
 
@@ -43,6 +45,13 @@
         <CheckBox x:Name="AgentBox" Content="Use keys from the SSH agent (Pageant or Windows OpenSSH)" Margin="0,8,0,0" />
         <TextBlock Text="With a key, the password is the key's passphrase."
                    Margin="0,4,0,0" FontSize="11" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
+        <StackPanel x:Name="WebPanel" Visibility="Collapsed">
+            <CheckBox x:Name="CertBox" Content="Accept this site's certificate even if it is not trusted" Margin="0,12,0,0" />
+            <TextBlock Text="For devices with a self-signed certificate (routers, Proxmox, printers). The check is skipped only for this connection's tab."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
 
         <StackPanel x:Name="JumpPanel">
             <TextBlock Text="Jump host (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
