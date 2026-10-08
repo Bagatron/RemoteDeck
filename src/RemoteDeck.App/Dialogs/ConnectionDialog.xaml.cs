@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Plugin;
+using RemoteDeck.Protocols.Git;
 using RemoteDeck.Protocols.Serial;
 
 namespace RemoteDeck.App.Dialogs;
@@ -71,6 +72,11 @@ public partial class ConnectionDialog : Window
             FlowBox.SelectedIndex = 0;
         }
 
+        if (GitShellBox.SelectedItem is null)
+        {
+            GitShellBox.SelectedIndex = 0;
+        }
+
         if (existing is not null)
         {
             NameBox.Text = existing.Name;
@@ -85,6 +91,8 @@ public partial class ConnectionDialog : Window
             FormatBox.Text = Option(existing, "format");
             FlowBox.SelectedItem = FlowBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "flow").ToLowerInvariant()) ?? FlowBox.Items[0];
             TranslateBox.IsChecked = !string.Equals(Option(existing, "translateLf"), "false", StringComparison.OrdinalIgnoreCase);
+            GitShellBox.SelectedItem = GitShellBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "shell").ToLowerInvariant()) ?? GitShellBox.Items[0];
+            StartupBox.Text = Option(existing, "startup");
             LocalEchoBox.IsChecked = string.Equals(Option(existing, "localEcho"), "true", StringComparison.OrdinalIgnoreCase);
             ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
@@ -119,18 +127,21 @@ public partial class ConnectionDialog : Window
 
     private bool IsSerial => SelectedType == "serial";
 
+    private bool IsGit => SelectedType == "git";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null)
         {
             return;
         }
 
-        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial ? Visibility.Collapsed : Visibility.Visible;
+        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial || IsGit ? Visibility.Collapsed : Visibility.Visible;
         SerialPanel.Visibility = IsSerial ? Visibility.Visible : Visibility.Collapsed;
-        PortBox.IsEnabled = !IsSerial;
+        GitPanel.Visibility = IsGit ? Visibility.Visible : Visibility.Collapsed;
+        PortBox.IsEnabled = !IsSerial && !IsGit;
         if (IsSerial)
         {
             var ports = SerialConnectionFactory.AvailablePorts();
@@ -144,7 +155,7 @@ public partial class ConnectionDialog : Window
 
         // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
         SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
-        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : "Host";
+        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : "Host";
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
@@ -167,6 +178,24 @@ public partial class ConnectionDialog : Window
         }
     }
 
+    private void BrowseFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "Choose the repository folder" };
+        if (HostBox.Text.Trim() is { Length: > 0 } current && System.IO.Directory.Exists(current))
+        {
+            dialog.InitialDirectory = current;
+        }
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            HostBox.Text = dialog.FolderName;
+            if (NameBox.Text.Trim().Length == 0)
+            {
+                NameBox.Text = System.IO.Path.GetFileName(dialog.FolderName.TrimEnd('\\', '/'));
+            }
+        }
+    }
+
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var host = HostBox.Text.Trim();
@@ -184,7 +213,7 @@ public partial class ConnectionDialog : Window
         }
 
         int? port = null;
-        if (!IsSerial && PortBox.Text.Trim().Length > 0)
+        if (!IsSerial && !IsGit && PortBox.Text.Trim().Length > 0)
         {
             if (!int.TryParse(PortBox.Text.Trim(), out var parsed) || parsed is < 1 or > 65535)
             {
@@ -308,6 +337,44 @@ public partial class ConnectionDialog : Window
             }
         }
 
+        if (IsGit)
+        {
+            var shellChoice = (GitShellBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "auto";
+            var gitOptions = new Dictionary<string, string>();
+            if (shellChoice != "auto")
+            {
+                gitOptions["shell"] = shellChoice;
+            }
+            else if (_existing is not null && Option(_existing, "shell") is { Length: > 0 } custom
+                && !GitConnectionFactory.KnownShells.Contains(custom, StringComparer.OrdinalIgnoreCase))
+            {
+                // A full program path set by editing the file by hand; keep it.
+                gitOptions["shell"] = custom;
+            }
+
+            if (StartupBox.Text.Trim().Length > 0)
+            {
+                gitOptions["startup"] = StartupBox.Text.Trim();
+            }
+
+            try
+            {
+                GitConnectionFactory.Validate(host, gitOptions);
+            }
+            catch (GitShellException ex)
+            {
+                Warn(ex.Message);
+                return;
+            }
+
+            options.Remove("shell");
+            options.Remove("startup");
+            foreach (var (gitKey, gitValue) in gitOptions)
+            {
+                options[gitKey] = gitValue;
+            }
+        }
+
         if (IsTelnet && LocalEchoBox.IsChecked == true)
         {
             options["localEcho"] = "true";
@@ -372,7 +439,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp || IsWeb || IsTelnet || IsSerial ? string.Empty : PasswordBox.Password;
+        Password = IsRdp || IsWeb || IsTelnet || IsSerial || IsGit ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

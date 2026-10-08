@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Protocols.Git</AssemblyName>
+    <RootNamespace>RemoteDeck.Protocols.Git</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Depends only on the public plugin contracts, exactly like a community plugin would. -->
+    <ProjectReference Include="..\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RemoteDeck.Protocols.Git.Tests" />
+  </ItemGroup>
+
+</Project>

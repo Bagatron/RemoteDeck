@@ -18,6 +18,7 @@
             <ComboBoxItem Content="SSH" Tag="ssh" />
             <ComboBoxItem Content="Telnet (not encrypted)" Tag="telnet" />
             <ComboBoxItem Content="Serial port (COM)" Tag="serial" />
+            <ComboBoxItem Content="Git terminal (local folder)" Tag="git" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
@@ -116,6 +117,22 @@
             <CheckBox x:Name="TranslateBox" Content="Start a new line at the left edge for each line feed" IsChecked="True" Margin="0,10,0,0" />
             <TextBlock Text="Most devices end lines with just a line feed, which would otherwise step down the screen without going back to the left. Turn this off only if the output looks double-spaced."
                        Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
+        <StackPanel x:Name="GitPanel" Visibility="Collapsed">
+            <Button Content="Choose folder..." HorizontalAlignment="Left" Padding="10,4" Margin="0,8,0,0" Click="BrowseFolder_Click" />
+            <TextBlock Text="Shell" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <ComboBox x:Name="GitShellBox" Padding="6,5">
+                <ComboBoxItem Content="Automatic (Git Bash if installed)" Tag="auto" />
+                <ComboBoxItem Content="Git Bash" Tag="bash" />
+                <ComboBoxItem Content="PowerShell 7" Tag="pwsh" />
+                <ComboBoxItem Content="Windows PowerShell" Tag="powershell" />
+                <ComboBoxItem Content="Command Prompt" Tag="cmd" />
+            </ComboBox>
+            <TextBlock Text="Run this when the terminal opens (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <TextBox x:Name="StartupBox" Padding="6,5" ToolTip="For example: git status" />
+            <TextBlock Text="Opens a terminal on this computer in the repository folder. Nothing is saved except the folder and these choices."
+                       Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 
         <StackPanel x:Name="WebPanel" Visibility="Collapsed">

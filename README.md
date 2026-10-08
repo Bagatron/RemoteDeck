@@ -20,6 +20,8 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `tests/RemoteDeck.Vault.Tests` | xUnit tests for the vault: round trips, wrong passwords, tamper detection, locking, storage, broker permissions. |
 | `tests/RemoteDeck.Protocols.Ssh.Tests` | xUnit tests for SSH using fake sessions (no network): credentials, host keys, options, lifecycle. |
 | `tests/RemoteDeck.Protocols.Telnet.Tests` | xUnit tests for Telnet: the parser, and real sessions against a local test server. |
+| `src/RemoteDeck.Protocols.Git` | Local git terminals: a shell (Git Bash, PowerShell or cmd) running in a Windows pseudo console (ConPTY) inside a repository folder. Plugs in as an `ITerminalConnection`. |
+| `tests/RemoteDeck.Protocols.Git.Tests` | xUnit tests for git terminals: settings, shell lookup and sessions against a fake shell (no real console needed). |
 | `tests/RemoteDeck.Protocols.Serial.Tests` | xUnit tests for serial: settings, line-ending handling and sessions against a fake port (no hardware needed). |
 | `samples/HelloPlugin` | A tiny plugin: one palette command and a demo "echo" terminal type. Copy it to start your own. |
 | `themes/`, `workspaces/` | Example theme and workspace files. |
@@ -141,6 +143,7 @@ The first start asks you to create a master password; after that it asks for it 
 - **Quick connect:** type `user@host` (or `user@host:port`) above the tabs for a one-off connection that is not saved.
 - **Telnet:** a connection of type Telnet opens as a terminal tab or pane, with split panes and broadcast like SSH. Telnet is not encrypted and has no passwords of its own, so RemoteDeck saves nothing for it: you type the login at the remote prompt. Meant for switches, routers and other devices on a network you trust. It answers the server's negotiation (the server echoing, the terminal type, and the window size, which follows the pane when you resize). Options: `term` (terminal type, default `xterm-256color`), `connectTimeoutSeconds` (default 10) and `localEcho` (`true` to show what you type yourself, for raw devices that do not echo; the dialog has a checkbox). The default port is 23. mRemoteNG imports of Telnet connections now open.
 - **Serial port:** a connection of type *Serial port (COM)* opens a COM port as a terminal tab or pane, for switch and router console cables, Arduinos and other devices. The host is the port name (for example `COM3`; the dialog lists the ports it finds). Options: `baud` (default 9600), `format` (data bits, parity and stop bits, default `8N1`), `flow` (`none`, `xonxoff` or `rtscts`) and `translateLf` (`false` to show line feeds as they are; by default each bare line feed from the device also returns to the left edge, so output does not stair-step). Nothing is saved except these settings. A port can only be open in one program at a time, so close other serial programs first. If the device is unplugged the tab says the connection closed.
+- **Git terminal:** a connection of type *Git terminal (local folder)* opens a shell on this computer in a repository folder, as a tab or split pane like any other terminal. The host is the folder. Options: `shell` (`auto` by default, which prefers Git Bash, then PowerShell 7, Windows PowerShell and cmd; or `bash`, `pwsh`, `powershell`, `cmd`, or the full path of a program) and `startup` (a one-line command typed for you when the terminal opens, for example `git status`). Needs Windows 10 version 1809 or newer. Nothing is saved except the folder and these options.
 - **Remote Desktop:** a connection of type RDP (add one with `+ Connection`, or import an `.rdp`/RDCMan/mRemoteNG file) opens in a tab of the main window, using the Windows Remote Desktop control that ships with Windows. RemoteDeck asks for the password each time and hands it straight to the session; it is never saved. The remote desktop follows the tab's size, and a bar above it shows the status with a Disconnect / Reconnect button. Because the control is a native window, it always draws above anything that overlaps it inside the main window (menus and dialogs open in their own windows, so they are fine). Tick *Open in the Windows Remote Desktop app instead of a tab* on a connection to use `mstsc` as before; that is also the fallback if the control is missing. Keyboard shortcuts such as `Ctrl+Shift+L` do not reach the app while the remote desktop has focus; click a tab first.
 - **Files (SFTP):** right-click an SSH connection, `Browse files (SFTP)` (or type `sftp` and a name in the palette). A file window opens for the same server, with the same saved password and host-key check. Double-click a folder to open it; `Upload files...`, `Upload folder...`, drag files in from Explorer, `Download`, `New folder`, `Rename`, `Delete` (folders are deleted with their contents, after a confirmation). Transfers can be cancelled.
 - **Workspaces:** open a tab the way you like it (layout, connections in their panes, which panes are in the broadcast group), then `Workspaces`, `Save current tab as workspace...` (or the same command in the palette). Opening a saved workspace puts it in a new tab and connects every pane. Broadcast always starts off. Workspaces are plain JSON files in `%LOCALAPPDATA%\RemoteDeck\workspaces` (see `workspaces/` for examples and `schemas/` for the format); they refer to connections by id, so a connection you deleted is reported and left out.
@@ -231,12 +234,11 @@ Done: encrypted vault, jump hosts, port forwards, saved connections, SSH termina
 
 Next, in this order:
 
-1. A git terminal connection type (to be designed)
-2. A MobaXterm importer (needs a sample export)
-3. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
-4. Clipboard clearing
-5. VNC
-6. Cleanup: newer GitHub Actions versions and a test that blocks on a task
+1. A MobaXterm importer (needs a sample export)
+2. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+3. Clipboard clearing
+4. VNC
+5. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 
