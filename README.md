@@ -100,7 +100,7 @@ var broker = new VaultCredentialBroker(vault, store.CredentialIdFor);
 Only credentials live in the vault; hosts, names and tags are stored elsewhere so they stay searchable while the vault is locked.
 
 * A random 256-bit **data key** encrypts each credential with AES-256-GCM and a fresh nonce. Every credential is bound to its id (swapping entries in the file is detected) and padded to a multiple of 256 bytes (the file does not reveal password lengths).
-* The data key is stored **wrapped** by a key derived from the master password with **Argon2id** (default 64 MiB, 3 passes, 4 lanes; the settings are stored in the file so they can be raised later). Changing the master password re-wraps one small blob and re-encrypts nothing. A second unlock method, such as Windows Hello, can wrap the same data key later.
+* The data key is stored **wrapped** by a key derived from the master password with **Argon2id** (default 64 MiB, 3 passes, 4 lanes; the settings are stored in the file so they can be raised later). Changing the master password re-wraps one small blob and re-encrypts nothing.
 * Credentials stay encrypted in memory. One is decrypted only inside a broker callback and wiped when the callback returns; locking wipes the data key.
 * Files are written atomically (temp file, flush, swap) with the previous version kept as `.bak`.
 * A wrong password and a damaged key block are indistinguishable by design.
@@ -115,7 +115,7 @@ VaultStorage.Save(vault, path);
 
 **Auto-lock:** after 15 minutes without use (change it with `Ctrl+Shift+P`, `auto-lock`: 5, 15, 60 minutes or never), when Windows locks, or with `Ctrl+Shift+L` (*Lock now*), RemoteDeck wipes the data key, hides its window and asks for the master password. Sessions that are already connected keep running, but saved passwords cannot be used until you unlock, so a dropped session will not reconnect while locked. Moving the mouse or typing inside a terminal counts as use.
 
-Not covered yet: Windows Hello/DPAPI unlock and a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
+Not covered yet: a clipboard-clearing helper. Treat the format as version 1 and **unreviewed**: have the crypto code audited before trusting it with real secrets, and note that .NET strings holding a typed password cannot be wiped, so the UI should collect it in a `char[]`.
 
 ## Themes
 
@@ -229,12 +229,15 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, CI.
 
-Next, in no fixed order:
+Next, in this order:
 
-1. More connection types: VNC and a git terminal (not scheduled; to be designed)
-2. Theme backdrop (Mica, acrylic) and shape for the standard controls
-3. Publish to winget (the manifest generator exists, see `packaging/README.md`), Scoop and Chocolatey packages, and a signed installer (release zips are already built by the tag workflow)
-4. Windows Hello / DPAPI unlock and clipboard clearing
+1. Theme backdrop (Mica, acrylic) and shape for the standard controls
+2. A git terminal connection type (to be designed)
+3. A MobaXterm importer (needs a sample export)
+4. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+5. Clipboard clearing
+6. VNC
+7. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 
