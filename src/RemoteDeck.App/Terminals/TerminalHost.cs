@@ -134,6 +134,12 @@ public sealed class TerminalHost
                 ["success"] = c.Success,
                 ["broadcast"] = c.Broadcast,
             },
+            ["shape"] = new JsonObject
+            {
+                ["radius"] = theme.Shape.CornerRadius,
+                ["borderWidth"] = theme.Shape.BorderWidth,
+                ["density"] = theme.Shape.Density,
+            },
             ["term"] = term,
             ["font"] = new JsonObject
             {
