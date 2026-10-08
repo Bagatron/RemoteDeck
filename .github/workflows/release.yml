@@ -1,0 +1,53 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the app and attach it to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test RemoteDeck.slnx --configuration Release
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          # Includes the .NET runtime, so nothing needs to be installed first.
+          dotnet publish src/RemoteDeck.App -c Release -r win-x64 --self-contained true `
+            -p:Version=$version -o publish/self-contained
+          Compress-Archive -Path publish/self-contained/* -DestinationPath "dist/RemoteDeck-$version-win-x64.zip"
+
+          # Smaller download; needs the .NET 10 Desktop Runtime.
+          dotnet publish src/RemoteDeck.App -c Release -r win-x64 --self-contained false `
+            -p:Version=$version -o publish/framework-dependent
+          Compress-Archive -Path publish/framework-dependent/* -DestinationPath "dist/RemoteDeck-$version-win-x64-needs-dotnet.zip"
+
+          Get-ChildItem dist/*.zip | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Append -Encoding ascii dist/SHA256SUMS.txt
+          }
+
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* `
+            --title "RemoteDeck ${{ github.ref_name }}" `
+            --generate-notes `
+            --prerelease
