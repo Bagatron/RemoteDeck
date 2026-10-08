@@ -66,7 +66,7 @@ internal sealed class ImportBuilder
         return id;
     }
 
-    public void AddConnection(
+    public string? AddConnection(
         string name,
         string type,
         string host,
@@ -78,7 +78,7 @@ internal sealed class ImportBuilder
         if (string.IsNullOrWhiteSpace(host))
         {
             Warn($"Skipped '{name}': it has no host.");
-            return;
+            return null;
         }
 
         if (port is < 1 or > 65535)
@@ -88,8 +88,9 @@ internal sealed class ImportBuilder
         }
 
         options = options is { Count: > 0 } ? options : null;
+        var id = ConnectionStore.NewId();
         _connections.Add(new ConnectionEntry(
-            ConnectionStore.NewId(),
+            id,
             string.IsNullOrWhiteSpace(name) ? host.Trim() : name.Trim(),
             type,
             host.Trim(),
@@ -97,6 +98,24 @@ internal sealed class ImportBuilder
             folderId,
             Options: options,
             Notes: string.IsNullOrWhiteSpace(notes) ? null : notes));
+        return id;
+    }
+
+    /// <summary>Sets one option on a connection added earlier.</summary>
+    public void SetOption(string connectionId, string key, string value)
+    {
+        var index = _connections.FindIndex(c => c.Id == connectionId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var existing = _connections[index];
+        var options = existing.Options is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(existing.Options);
+        options[key] = value;
+        _connections[index] = existing with { Options = options };
     }
 
     public void Warn(string message) => _warnings.Add(message);
