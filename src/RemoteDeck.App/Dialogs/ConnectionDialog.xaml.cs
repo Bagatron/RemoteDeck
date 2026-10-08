@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Plugin;
+using RemoteDeck.Protocols.Serial;
 
 namespace RemoteDeck.App.Dialogs;
 
@@ -65,6 +66,10 @@ public partial class ConnectionDialog : Window
         }
 
         TypeBox.SelectedItem = match;
+        if (FlowBox.SelectedItem is null)
+        {
+            FlowBox.SelectedIndex = 0;
+        }
 
         if (existing is not null)
         {
@@ -76,6 +81,10 @@ public partial class ConnectionDialog : Window
             ReconnectBox.IsChecked = string.Equals(Option(existing, "autoReconnect"), "true", StringComparison.OrdinalIgnoreCase);
             AgentBox.IsChecked = string.Equals(Option(existing, "useAgent"), "true", StringComparison.OrdinalIgnoreCase);
             CertBox.IsChecked = string.Equals(Option(existing, "acceptUntrustedCertificate"), "true", StringComparison.OrdinalIgnoreCase);
+            BaudBox.Text = Option(existing, "baud");
+            FormatBox.Text = Option(existing, "format");
+            FlowBox.SelectedItem = FlowBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "flow").ToLowerInvariant()) ?? FlowBox.Items[0];
+            TranslateBox.IsChecked = !string.Equals(Option(existing, "translateLf"), "false", StringComparison.OrdinalIgnoreCase);
             LocalEchoBox.IsChecked = string.Equals(Option(existing, "localEcho"), "true", StringComparison.OrdinalIgnoreCase);
             ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
@@ -108,23 +117,34 @@ public partial class ConnectionDialog : Window
 
     private bool IsTelnet => SelectedType == "telnet";
 
+    private bool IsSerial => SelectedType == "serial";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null)
         {
             return;
         }
 
-        LoginPanel.Visibility = IsWeb || IsTelnet ? Visibility.Collapsed : Visibility.Visible;
+        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial ? Visibility.Collapsed : Visibility.Visible;
+        SerialPanel.Visibility = IsSerial ? Visibility.Visible : Visibility.Collapsed;
+        PortBox.IsEnabled = !IsSerial;
+        if (IsSerial)
+        {
+            var ports = SerialConnectionFactory.AvailablePorts();
+            PortsHint.Text = ports.Count > 0
+                ? "Ports found on this computer: " + string.Join(", ", ports) + "."
+                : "No serial ports were found. Plug the device in, or type the port name.";
+        }
         TelnetPanel.Visibility = IsTelnet ? Visibility.Visible : Visibility.Collapsed;
         WebPanel.Visibility = IsWeb ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = IsRdp ? Visibility.Visible : Visibility.Collapsed;
 
         // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
         SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
-        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : "Host";
+        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : "Host";
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
@@ -164,7 +184,7 @@ public partial class ConnectionDialog : Window
         }
 
         int? port = null;
-        if (PortBox.Text.Trim().Length > 0)
+        if (!IsSerial && PortBox.Text.Trim().Length > 0)
         {
             if (!int.TryParse(PortBox.Text.Trim(), out var parsed) || parsed is < 1 or > 65535)
             {
@@ -244,6 +264,50 @@ public partial class ConnectionDialog : Window
             options.Remove("acceptUntrustedCertificate");
         }
 
+        if (IsSerial)
+        {
+            var serialOptions = new Dictionary<string, string>();
+            if (BaudBox.Text.Trim().Length > 0)
+            {
+                serialOptions["baud"] = BaudBox.Text.Trim();
+            }
+
+            if (FormatBox.Text.Trim().Length > 0)
+            {
+                serialOptions["format"] = FormatBox.Text.Trim();
+            }
+
+            if ((FlowBox.SelectedItem as ComboBoxItem)?.Tag is string flow && flow != "none")
+            {
+                serialOptions["flow"] = flow;
+            }
+
+            if (TranslateBox.IsChecked != true)
+            {
+                serialOptions["translateLf"] = "false";
+            }
+
+            try
+            {
+                SerialSettingsCheck.Validate(host, serialOptions);
+            }
+            catch (SerialConnectionException ex)
+            {
+                Warn(ex.Message);
+                return;
+            }
+
+            foreach (var serialKey in new[] { "baud", "format", "flow", "translateLf" })
+            {
+                options.Remove(serialKey);
+            }
+
+            foreach (var (serialKey, serialValue) in serialOptions)
+            {
+                options[serialKey] = serialValue;
+            }
+        }
+
         if (IsTelnet && LocalEchoBox.IsChecked == true)
         {
             options["localEcho"] = "true";
@@ -308,7 +372,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp || IsWeb || IsTelnet ? string.Empty : PasswordBox.Password;
+        Password = IsRdp || IsWeb || IsTelnet || IsSerial ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

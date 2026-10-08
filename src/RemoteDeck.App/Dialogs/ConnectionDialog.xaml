@@ -17,6 +17,7 @@
         <ComboBox x:Name="TypeBox" Padding="6,5" SelectionChanged="TypeBox_SelectionChanged">
             <ComboBoxItem Content="SSH" Tag="ssh" />
             <ComboBoxItem Content="Telnet (not encrypted)" Tag="telnet" />
+            <ComboBoxItem Content="Serial port (COM)" Tag="serial" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
@@ -68,6 +69,53 @@
             <TextBlock Text="Telnet sends everything, including the login you type, without encryption. Use it only for devices on a network you trust. There is nothing to save here: you log in at the remote prompt."
                        Margin="0,12,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
             <CheckBox x:Name="LocalEchoBox" Content="Show what I type myself (for devices that do not echo)" Margin="0,8,0,0" />
+        </StackPanel>
+
+        <StackPanel x:Name="SerialPanel" Visibility="Collapsed">
+            <TextBlock x:Name="PortsHint" Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Baud rate" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+                    <ComboBox x:Name="BaudBox" IsEditable="True" Padding="6,5">
+                        <ComboBoxItem Content="1200" />
+                        <ComboBoxItem Content="2400" />
+                        <ComboBoxItem Content="4800" />
+                        <ComboBoxItem Content="9600" />
+                        <ComboBoxItem Content="19200" />
+                        <ComboBoxItem Content="38400" />
+                        <ComboBoxItem Content="57600" />
+                        <ComboBoxItem Content="115200" />
+                        <ComboBoxItem Content="230400" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                    <TextBlock Text="Format" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+                    <ComboBox x:Name="FormatBox" IsEditable="True" Padding="6,5" ToolTip="Data bits, parity (N, E, O) and stop bits, for example 8N1">
+                        <ComboBoxItem Content="8N1" />
+                        <ComboBoxItem Content="7E1" />
+                        <ComboBoxItem Content="7O1" />
+                        <ComboBoxItem Content="8E1" />
+                        <ComboBoxItem Content="8O1" />
+                        <ComboBoxItem Content="8N2" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                    <TextBlock Text="Flow control" Foreground="{StaticResource TextDim}" Margin="0,0,0,4" />
+                    <ComboBox x:Name="FlowBox" Padding="6,5">
+                        <ComboBoxItem Content="None" Tag="none" />
+                        <ComboBoxItem Content="XON/XOFF" Tag="xonxoff" />
+                        <ComboBoxItem Content="RTS/CTS" Tag="rtscts" />
+                    </ComboBox>
+                </StackPanel>
+            </Grid>
+            <CheckBox x:Name="TranslateBox" Content="Start a new line at the left edge for each line feed" IsChecked="True" Margin="0,10,0,0" />
+            <TextBlock Text="Most devices end lines with just a line feed, which would otherwise step down the screen without going back to the left. Turn this off only if the output looks double-spaced."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 
         <StackPanel x:Name="WebPanel" Visibility="Collapsed">
