@@ -66,6 +66,7 @@
                     <ContextMenu Opened="TreeMenu_Opened">
                         <MenuItem x:Name="MenuOpen" Header="Open" Click="MenuOpen_Click" />
                         <MenuItem x:Name="MenuOpenNew" Header="Open in new tab" Click="MenuOpenNew_Click" />
+                        <MenuItem x:Name="MenuSftp" Header="Browse files (SFTP)" Click="MenuSftp_Click" />
                         <MenuItem x:Name="MenuEdit" Header="Edit..." Click="MenuEdit_Click" />
                         <MenuItem x:Name="MenuRename" Header="Rename folder..." Click="MenuRename_Click" />
                         <MenuItem x:Name="MenuDelete" Header="Delete" Click="MenuDelete_Click" />

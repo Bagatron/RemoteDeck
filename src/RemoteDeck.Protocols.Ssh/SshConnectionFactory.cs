@@ -18,6 +18,13 @@ public sealed class SshConnectionFactory : IConnectionFactory
         _hostKeys = new HostKeyVerifier(hostKeys, prompt);
     }
 
+    /// <summary>Opens an SFTP file session to the same server, using the same credential and host-key rules as a terminal.</summary>
+    public Task<SftpSession> OpenSftpAsync(
+        ConnectionDefinition definition,
+        ICredentialBroker credentials,
+        CancellationToken cancellationToken = default) =>
+        SftpSession.ConnectAsync(definition, credentials, new SshNetSftpFactory(), _hostKeys, cancellationToken);
+
     public string Type => "ssh";
 
     public string DisplayName => "SSH";

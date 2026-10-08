@@ -36,7 +36,7 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
         }
     }
 
-    private static SshClient BuildClient(SshConnectRequest request, List<byte[]> wipe)
+    internal static ConnectionInfo BuildInfo(SshConnectRequest request, List<byte[]> wipe)
     {
         var methods = new List<AuthenticationMethod>();
 
@@ -85,7 +85,12 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
             Timeout = request.ConnectTimeout,
         };
 
-        var client = new SshClient(info);
+        return info;
+    }
+
+    /// <summary>Applies keep-alive and the host-key check to a client (SSH or SFTP).</summary>
+    internal static void Configure(BaseClient client, SshConnectRequest request)
+    {
         if (request.KeepAlive > TimeSpan.Zero)
         {
             client.KeepAliveInterval = request.KeepAlive;
@@ -100,11 +105,16 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
                 HostKeyFingerprint.Sha256(e.HostKey));
             e.CanTrust = request.VerifyHostKey(presented);
         };
+    }
 
+    private static SshClient BuildClient(SshConnectRequest request, List<byte[]> wipe)
+    {
+        var client = new SshClient(BuildInfo(request, wipe));
+        Configure(client, request);
         return client;
     }
 
-    private static Exception Translate(Exception ex, SshConnectRequest request)
+    internal static Exception Translate(Exception ex, SshConnectRequest request)
     {
         return ex switch
         {
@@ -120,6 +130,86 @@ internal sealed class SshNetSessionFactory : ISshSessionFactory
                 $"The SSH connection to {request.Host}:{request.Port} failed: {ex.Message}", ex),
             _ => ex,
         };
+    }
+}
+
+internal sealed class SshNetSftpFactory : ISftpBackendFactory
+{
+    public async Task<ISftpBackend> ConnectAsync(SshConnectRequest request, CancellationToken cancellationToken)
+    {
+        var wipe = new List<byte[]>();
+        SftpClient? client = null;
+        try
+        {
+            var created = new SftpClient(SshNetSessionFactory.BuildInfo(request, wipe));
+            client = created;
+            SshNetSessionFactory.Configure(created, request);
+
+            await Task.Run(() => created.ConnectAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+            return new SshNetSftp(created);
+        }
+        catch (Exception ex)
+        {
+            client?.Dispose();
+            throw SshNetSessionFactory.Translate(ex, request);
+        }
+        finally
+        {
+            foreach (var secret in wipe)
+            {
+                CryptographicOperations.ZeroMemory(secret);
+            }
+        }
+    }
+}
+
+internal sealed class SshNetSftp : ISftpBackend
+{
+    private readonly SftpClient _client;
+
+    public SshNetSftp(SftpClient client)
+    {
+        _client = client;
+    }
+
+    public string WorkingDirectory => _client.WorkingDirectory;
+
+    public IReadOnlyList<SftpEntry> List(string path) =>
+        _client.ListDirectory(path)
+            .Select(f => new SftpEntry(f.Name, f.FullName, f.IsDirectory, f.IsDirectory ? 0 : f.Length, f.LastWriteTime))
+            .ToList();
+
+    public void Download(string path, Stream destination, Action<long> progress) =>
+        _client.DownloadFile(path, destination, done => progress((long)done));
+
+    public void Upload(Stream source, string path, Action<long> progress) =>
+        _client.UploadFile(source, path, true, done => progress((long)done));
+
+    public void DeleteFile(string path) => _client.DeleteFile(path);
+
+    public void DeleteDirectory(string path) => _client.DeleteDirectory(path);
+
+    public void CreateDirectory(string path) => _client.CreateDirectory(path);
+
+    public void Rename(string from, string to) => _client.RenameFile(from, to);
+
+    public bool Exists(string path) => _client.Exists(path);
+
+    public void Dispose()
+    {
+        try
+        {
+            if (_client.IsConnected)
+            {
+                _client.Disconnect();
+            }
+        }
+        catch (Exception ex) when (ex is Renci.SshNet.Common.SshException or ObjectDisposedException or IOException)
+        {
+            // Already gone.
+        }
+
+        _client.Dispose();
     }
 }
 

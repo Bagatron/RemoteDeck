@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using RemoteDeck.App.Dialogs;
 using RemoteDeck.App.Services;
+using RemoteDeck.App.Sftp;
 using RemoteDeck.App.Terminals;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
@@ -206,6 +207,20 @@ public partial class MainWindow : Window
         }
 
         var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var sftpOnly = words.Length > 0 && words[0].Equals("sftp", StringComparison.OrdinalIgnoreCase);
+        if (sftpOnly)
+        {
+            var rest = string.Join(' ', words.Skip(1));
+            return _data.Store.Search(rest, 30)
+                .Where(r => r.Connection.Type == "ssh")
+                .Select(r =>
+                {
+                    var entry = r.Connection;
+                    return new PaletteItem("SFTP: " + entry.Name, string.IsNullOrEmpty(r.FolderPath) ? entry.Type : r.FolderPath, () => _ = OpenSftpAsync(entry));
+                })
+                .ToList();
+        }
+
         var matchingActions = actions.Where(a => words.All(w => a.Title.Contains(w, StringComparison.OrdinalIgnoreCase)));
         var connections = _data.Store.Search(query, 30).Select(r =>
         {
@@ -438,6 +453,7 @@ public partial class MainWindow : Window
 
         MenuOpen.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuOpenNew.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
+        MenuSftp.Visibility = tag is ConnectionEntry { Type: "ssh" } ? Visibility.Visible : Visibility.Collapsed;
         MenuEdit.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuRename.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
         MenuDelete.Visibility = connection || folder ? Visibility.Visible : Visibility.Collapsed;
@@ -461,6 +477,43 @@ public partial class MainWindow : Window
         if (Tree.SelectedItem is TreeViewItem { Tag: ConnectionEntry entry })
         {
             _ = OpenSavedAsync(entry, newTab: true);
+        }
+    }
+
+    private void MenuSftp_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tree.SelectedItem is TreeViewItem { Tag: ConnectionEntry entry })
+        {
+            _ = OpenSftpAsync(entry);
+        }
+    }
+
+    private async Task OpenSftpAsync(ConnectionEntry entry)
+    {
+        var definition = _data.Store.ResolveDefinition(entry.Id);
+        if (definition is null)
+        {
+            return;
+        }
+
+        var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
+        SetStatus($"Connecting to {entry.Name} for files...");
+        try
+        {
+            // Off the UI thread: the host-key question blocks the connecting thread until you answer it.
+            var session = await Task.Run(() => _ssh.OpenSftpAsync(definition, broker));
+            SetStatus(string.Empty);
+            new SftpWindow(this, entry.Name, session).Show();
+        }
+        catch (SshConnectionException ex)
+        {
+            SetStatus(string.Empty);
+            MessageBox.Show(this, ex.Message, "SFTP", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex) when (ex is VaultException or KeyNotFoundException)
+        {
+            SetStatus(string.Empty);
+            MessageBox.Show(this, "Could not read the saved password: " + ex.Message, "SFTP", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
