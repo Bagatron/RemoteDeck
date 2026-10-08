@@ -91,6 +91,12 @@ public sealed class TerminalHost
     /// <summary>Shows a tab's current layout and pane details. Safe to call as often as needed.</summary>
     public void Sync(WorkspaceTab tab) => Send(tab.ToSync());
 
+    /// <summary>How many lines each terminal keeps to scroll back through (applies to open terminals too).</summary>
+    public void SetScrollback(int lines)
+    {
+        Send(new JsonObject { ["t"] = "scrollback", ["lines"] = Math.Clamp(lines, 100, 200_000) });
+    }
+
     /// <summary>Gives the page the interface colors, the terminal palette and the terminal font.</summary>
     public void SetTheme(Theme theme)
     {

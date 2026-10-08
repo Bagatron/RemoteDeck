@@ -40,8 +40,27 @@
             <Button DockPanel.Dock="Right" Content="Browse..." Margin="6,0,0,0" Padding="10,4" Click="Browse_Click" />
             <TextBox x:Name="KeyBox" Padding="6,5" />
         </DockPanel>
+        <CheckBox x:Name="AgentBox" Content="Use keys from the SSH agent (Pageant or Windows OpenSSH)" Margin="0,8,0,0" />
         <TextBlock Text="With a key, the password is the key's passphrase."
                    Margin="0,4,0,0" FontSize="11" Foreground="{StaticResource TextDim}" />
+
+        <StackPanel x:Name="JumpPanel">
+            <TextBlock Text="Jump host (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <ComboBox x:Name="JumpBox" Padding="6,5" DisplayMemberPath="Label" />
+            <TextBlock Text="Connects through another saved SSH connection, for hosts you can only reach via a bastion."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+
+            <TextBlock Text="Port forwards (optional, one per line)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <TextBox x:Name="ForwardsBox" Padding="6,5" AcceptsReturn="True" MinLines="2" MaxLines="5"
+                     VerticalScrollBarVisibility="Auto" FontFamily="Consolas" />
+            <TextBlock Text="L:8080:db.internal:5432 opens local port 8080 to db.internal:5432 through the server. R:9000:localhost:3000 opens port 9000 on the server back to your localhost:3000. D:1080 is a SOCKS proxy. Listeners only accept connections from this computer."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+
+            <CheckBox x:Name="ReconnectBox" Content="Reconnect automatically if the connection drops" Margin="0,12,0,0" />
+            <CheckBox x:Name="LogBox" Content="Log session output to a file" Margin="0,8,0,0" />
+            <TextBlock Text="Saves what the server prints, without colors, to the session logs folder. Passwords you type are not logged, but anything shown on screen is."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
 
         <TextBlock Text="Folder" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <ComboBox x:Name="FolderBox" Padding="6,5" DisplayMemberPath="Label" />

@@ -11,6 +11,14 @@ internal sealed class AppSettings
     /// <summary>Name of the chosen theme.</summary>
     public string? Theme { get; set; }
 
+    public const int DefaultScrollback = 10000;
+
+    /// <summary>How many lines of output each terminal keeps to scroll back through.</summary>
+    public int ScrollbackLines { get; set; } = DefaultScrollback;
+
+    /// <summary>Plugins the user turned on, with the permissions they approved for each (plugin id to permission names).</summary>
+    public Dictionary<string, List<string>> Plugins { get; set; } = new();
+
     public static AppSettings Load()
     {
         try

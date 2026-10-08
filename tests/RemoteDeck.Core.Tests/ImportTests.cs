@@ -44,6 +44,57 @@ public class ImportTests
     }
 
     [Fact]
+    public void SshConfig_ProxyJump_LinksToAnotherHostInTheFile()
+    {
+        var result = SshConfigImporter.Parse("Host bastion\n  HostName b.example.com\nHost app\n  HostName 10.0.0.5\n  ProxyJump bastion\n", "/home/me");
+
+        var bastion = result.Connections.Single(c => c.Name == "bastion");
+        var app = result.Connections.Single(c => c.Name == "app");
+        Assert.Equal(bastion.Id, app.Options!["proxyJump"]);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void SshConfig_ProxyJump_CanPointAtALaterHost()
+    {
+        var result = SshConfigImporter.Parse("Host app\n  ProxyJump bastion\nHost bastion\n", "/home/me");
+
+        Assert.Equal(result.Connections.Single(c => c.Name == "bastion").Id, result.Connections.Single(c => c.Name == "app").Options!["proxyJump"]);
+    }
+
+    [Fact]
+    public void SshConfig_ProxyJump_ToAChainOrUnknownHost_WarnsAndConnectsDirectly()
+    {
+        var result = SshConfigImporter.Parse("Host a\n  ProxyJump x,y\nHost b\n  ProxyJump me@nowhere:2200\nHost c\n  ProxyJump c\n", "/home/me");
+
+        Assert.All(result.Connections, c => Assert.Null(c.Options));
+        Assert.Equal(3, result.Warnings.Count);
+        Assert.All(result.Warnings, w => Assert.Contains("ProxyJump", w));
+    }
+
+    [Fact]
+    public void SshConfig_PortForwards_AreConverted_AndRepeatsAreKept()
+    {
+        var text = "Host db\n  LocalForward 8080 internal:80\n  LocalForward 127.0.0.1:8443 internal:443\n  RemoteForward 9000 localhost:3000\n  DynamicForward 1080\n";
+
+        var result = SshConfigImporter.Parse(text, "/home/me");
+
+        Assert.Equal(
+            "L:8080:internal:80\nL:8443:internal:443\nR:9000:localhost:3000\nD:1080",
+            result.Connections.Single().Options!["forwards"]);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void SshConfig_UnreadableForward_IsSkippedWithAWarning()
+    {
+        var result = SshConfigImporter.Parse("Host db\n  LocalForward nonsense\n  LocalForward 8080 h:80\n", "/home/me");
+
+        Assert.Equal("L:8080:h:80", result.Connections.Single().Options!["forwards"]);
+        Assert.Single(result.Warnings);
+    }
+
+    [Fact]
     public void SshConfig_WithNoHosts_ImportsNothing()
     {
         var result = SshConfigImporter.Parse("# nothing here\n", "/home/me");

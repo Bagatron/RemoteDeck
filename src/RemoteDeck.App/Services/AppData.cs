@@ -21,6 +21,12 @@ internal static class AppPaths
 
     public static string Workspaces => Path.Combine(Folder, "workspaces");
 
+    public static string Plugins => Path.Combine(Folder, "plugins");
+
+    public static string Logs => Path.Combine(Folder, "logs");
+
+    public static string PluginData => Path.Combine(Folder, "plugin-data");
+
     public static string UserThemes => Path.Combine(Folder, "themes");
 
     public static string KnownHosts => Path.Combine(Folder, "known_hosts.json");

@@ -40,7 +40,8 @@ public sealed class SftpSession : IDisposable
         ICredentialBroker credentials,
         ISftpBackendFactory backends,
         HostKeyVerifier hostKeys,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, ConnectionDefinition?>? resolveJump = null)
     {
         var options = SshOptions.From(definition);
 
@@ -79,32 +80,43 @@ public sealed class SftpSession : IDisposable
             }
 
             var hasSecret = secret is { Length: > 0 };
-            if (opts.PrivateKeyPath is null && !hasSecret)
+            if (opts.PrivateKeyPath is null && !hasSecret && !opts.UseAgent)
             {
                 throw new SshConnectionException("No password or private key is set for this connection.");
             }
 
             var rejected = false;
-            var request = new SshConnectRequest
+            bool Verify(HostKeyInfo key)
             {
-                Host = opts.Host,
-                Port = opts.Port,
-                Username = username,
-                Secret = hasSecret ? secret : null,
-                PrivateKeyPath = opts.PrivateKeyPath,
-                ConnectTimeout = opts.ConnectTimeout,
-                KeepAlive = opts.KeepAlive,
-                VerifyHostKey = key =>
-                {
-                    var trusted = hostKeys.VerifyAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
-                    rejected |= !trusted;
-                    return trusted;
-                },
-            };
+                var trusted = hostKeys.VerifyAsync(key, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                rejected |= !trusted;
+                return trusted;
+            }
 
             try
             {
-                return new SftpSession(await backends.ConnectAsync(request, cancellationToken).ConfigureAwait(false));
+                return await JumpHosts.WithJumpAsync<SftpSession>(
+                    opts,
+                    definition.Id,
+                    resolveJump,
+                    credentials,
+                    Verify,
+                    async jump => new SftpSession(await backends.ConnectAsync(
+                        new SshConnectRequest
+                        {
+                            Host = opts.Host,
+                            Port = opts.Port,
+                            Username = username,
+                            Secret = hasSecret ? secret : null,
+                            PrivateKeyPath = opts.PrivateKeyPath,
+                            UseAgent = opts.UseAgent,
+                            ConnectTimeout = opts.ConnectTimeout,
+                            KeepAlive = opts.KeepAlive,
+                            VerifyHostKey = Verify,
+                            Jump = jump,
+                        },
+                        cancellationToken).ConfigureAwait(false)),
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (Exception) when (rejected)
             {
