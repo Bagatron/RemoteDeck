@@ -6,7 +6,8 @@
 <link rel="stylesheet" href="xterm.css">
 <style>
   :root { --bg: #2e3440; --panel: #3b4252; --alt: #434c5e; --line: #4c566a; --text: #eceff4; --dim: #8f9bb3;
-          --accent: #88c0d0; --danger: #bf616a; --warning: #ebcb8b; --success: #a3be8c; --broadcast: #d08770; }
+          --accent: #88c0d0; --danger: #bf616a; --warning: #ebcb8b; --success: #a3be8c; --broadcast: #d08770;
+          --radius: 8px; --bw: 1px; --hdr: 24px; --body-top: 4px; --body-left: 8px; }
   html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; color: var(--text);
                font: 12px "Segoe UI", system-ui, sans-serif; }
   #root { position: absolute; inset: 0; }
@@ -20,16 +21,18 @@
   .split { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
   .split.columns { flex-direction: row; }
   .split.rows { flex-direction: column; }
-  .gutter { flex: 0 0 5px; background: var(--line); }
+  .gutter { flex: 0 0 6px; background: transparent; }
   .split.columns > .gutter { cursor: col-resize; }
   .split.rows > .gutter { cursor: row-resize; }
   .gutter:hover, .gutter.drag { background: var(--accent); }
 
   .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
-          position: relative; background: var(--bg); }
+          position: relative; background: var(--bg); box-sizing: border-box;
+          border: var(--bw) solid var(--line); border-radius: var(--radius); }
+  .pane.focused { border-color: var(--accent); }
   .pane.live::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--broadcast);
-                      pointer-events: none; z-index: 5; }
-  .hdr { flex: 0 0 24px; display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px;
+                      border-radius: var(--radius); pointer-events: none; z-index: 5; }
+  .hdr { flex: 0 0 var(--hdr); display: flex; align-items: center; gap: 2px; padding: 0 4px 0 8px;
          background: var(--panel); border-bottom: 2px solid transparent; user-select: none; }
   .pane.focused .hdr { border-bottom-color: var(--accent); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-right: 6px; flex: none; }
@@ -40,14 +43,14 @@
   .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .spacer { flex: 1; }
   .hdr button { display: flex; align-items: center; background: none; border: 0; color: var(--dim);
-                padding: 4px; border-radius: 3px; cursor: pointer; }
+                padding: 4px; border-radius: calc(var(--radius) * 0.4); cursor: pointer; }
   .hdr button:hover { color: var(--text); background: var(--alt); }
   .pane.empty [data-a="member"] { display: none; }
   .pane.member [data-a="member"] { color: var(--warning); }
   .pane.live [data-a="member"] { color: var(--broadcast); }
 
   .body { position: relative; flex: 1 1 0; min-height: 0; }
-  .xt { position: absolute; inset: 0; padding: 4px 0 0 8px; box-sizing: border-box; }
+  .xt { position: absolute; inset: 0; padding: var(--body-top) 0 0 var(--body-left); box-sizing: border-box; }
   .placeholder { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
                  text-align: center; color: var(--dim); line-height: 1.7; pointer-events: none; }
   .pane.empty .placeholder { display: flex; }
@@ -311,6 +314,14 @@
   function applyTheme(m) {
     const style = document.documentElement.style;
     for (const [name, value] of Object.entries(m.ui)) style.setProperty("--" + name, value);
+    if (m.shape) {
+      const density = { compact: [20, 2, 6], comfortable: [24, 4, 8], spacious: [30, 8, 12] }[m.shape.density] || [24, 4, 8];
+      style.setProperty("--radius", m.shape.radius + "px");
+      style.setProperty("--bw", m.shape.borderWidth + "px");
+      style.setProperty("--hdr", density[0] + "px");
+      style.setProperty("--body-top", density[1] + "px");
+      style.setProperty("--body-left", density[2] + "px");
+    }
     termTheme = m.term;
     termFont = m.font;
     for (const pane of panes.values()) {

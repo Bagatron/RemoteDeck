@@ -102,7 +102,7 @@ Not covered yet: Windows Hello/DPAPI unlock, an auto-lock timer, and a clipboard
 
 The `Theme` button at the bottom of the sidebar lists the built-in themes (RemoteDeck Dark and Light), the example files in the `themes` folder next to the program, and your own. Put your own `.json` files in `%LOCALAPPDATA%\RemoteDeck\themes` (the `Open my themes folder` item opens it); a file there replaces a shipped theme of the same name. Saving a theme file applies it straight away, no restart needed. A file with a mistake is skipped and the `Theme problems` item names the file and the field.
 
-Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors) and fonts (the terminal uses the theme's font size plus one). Corner radius, border width, density and backdrop are read and checked but not drawn yet. The choice is remembered in `settings.json`.
+Applied today: interface colors, terminal colors (background, cursor, selection, the 16 ANSI colors), fonts (the terminal uses the theme's font size plus one) and the shape of the terminal area: `cornerRadius` rounds the panes and their buttons, `borderWidth` is the pane outline (0 hides it), and `density` (`compact`, `comfortable`, `spacious`) sets the pane header height and text padding. The standard Windows controls (buttons, lists, menus) keep their own Fluent shape, and `backdrop` (Mica, acrylic) is read and checked but not drawn yet. The choice is remembered in `settings.json`.
 
 ## Importing
 
@@ -152,22 +152,35 @@ dotnet run --project tools/SshSmoke -- me@my-server:2222 -i C:\Users\me\.ssh\id_
 
 Press Ctrl+] to quit.
 
-## Writing a plugin
+## Plugins
+
+The `Plugins...` button (or the palette) lists plugins found in `%LOCALAPPDATA%\RemoteDeck\plugins\<name>\` (each folder holds a `plugin.json` and the plugin's DLL) and in a `plugins` folder next to the program. A plugin is **off until you turn it on**: you see what it asks for and confirm. If a newer version asks for more than you approved, it stays off until you approve again. A plugin can add palette commands (shown as `Plugin: ...`) and new connection types (they appear in the `+ Connection` type list and open in a terminal pane). Each plugin loads in its own isolated load context, so its dependencies cannot clash with RemoteDeck's or another plugin's, and turning it off unloads it.
+
+**What the permissions mean.** `useCredentials` is enforced: without it, the plugin's request for a saved credential is refused, and with it the plugin still only gets one connection's credential inside a callback that the host wipes afterwards. `network`, `fileSystem` and `launchProcess` are declarations that tell you what the plugin intends; .NET cannot sandbox code that runs in-process, so a plugin runs with your Windows account's access. Only turn on plugins whose source you trust.
+
+### Writing a plugin
 
 1. Copy `samples/HelloPlugin`.
 2. Implement `IPlugin.Initialize(IPluginContext)` and register commands or connection types.
 3. Edit `plugin.json`: id, version, `minHostApiVersion`, the entry-point DLL and the permissions you need.
+4. `dotnet build -c Release`, then copy the output folder (the DLL and `plugin.json`, but not `RemoteDeck.Plugin.Abstractions.dll`) into a new folder under the plugins folder above.
+
+To try the sample: build `samples/HelloPlugin`, copy `HelloPlugin.dll` and `plugin.json` from its `bin\Release\net10.0` folder into `%LOCALAPPDATA%\RemoteDeck\plugins\hello`, then open `Plugins...` and turn it on. `Ctrl+Shift+P`, `hello` runs its command, and `Echo (demo)` appears as a connection type.
 
 Plugins never see the credential vault. They ask the `ICredentialBroker` for one connection's credential, read the password inside a callback, and the host wipes it afterwards. This needs the `useCredentials` permission.
 
 ## Roadmap
 
-1. **MVP**: WPF shell (WPF-UI), connection tree and tabs, RDP and SSH, encrypted vault (Argon2id + AES-256-GCM)
-2. Importers (mRemoteNG, RDCMan, PuTTY, `.rdp`, `~/.ssh/config`)
-3. Wire split panes and broadcast into the UI (single WebView2 hosting all terminals)
-4. VNC, SFTP, web tabs, command palette, plugin loading with `AssemblyLoadContext`
-5. Packaging for winget, Scoop and Chocolatey
-6. Git terminal (not scheduled; to be designed)
+Done: encrypted vault, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (opens in the Windows client), SFTP file browser, saved workspaces, plugin loading, CI.
+
+Next, in no fixed order:
+
+1. RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design)
+2. VNC and web tabs
+3. Theme backdrop (Mica, acrylic) and shape for the standard controls
+4. Packaging for winget, Scoop and Chocolatey, and a signed installer
+5. A git terminal (not scheduled; to be designed)
+6. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
 
 ## License
 
