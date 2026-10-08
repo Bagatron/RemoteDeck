@@ -21,6 +21,17 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `themes/`, `workspaces/` | Example theme and workspace files. |
 | `schemas/` | JSON Schemas for themes, workspaces and `plugin.json` (add `"$schema"` to a file for editor autocomplete). |
 
+## Install
+
+Download a zip from the [Releases](../../releases) page and unzip it anywhere. There is no installer, and RemoteDeck keeps its data in `%LOCALAPPDATA%\RemoteDeck`.
+
+- `RemoteDeck-<version>-win-x64.zip` includes everything it needs.
+- `RemoteDeck-<version>-win-x64-needs-dotnet.zip` is smaller but needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+Run `RemoteDeck.exe`. The app is not code-signed yet, so Windows SmartScreen may warn you the first time; the `SHA256SUMS.txt` on each release lets you check your download. The Edge WebView2 runtime is also required (already on Windows 11). winget, Scoop and Chocolatey packages are planned.
+
+Releases are built by GitHub Actions when a version tag such as `v0.1.0` is pushed.
+
 ## Build and test
 
 Requires the **.NET 10 SDK**.
@@ -178,7 +189,7 @@ Next, in no fixed order:
 1. RDP embedded in a tab (the Windows RDP control cannot share a window with the terminal view, so this needs its own design)
 2. VNC and web tabs
 3. Theme backdrop (Mica, acrylic) and shape for the standard controls
-4. Packaging for winget, Scoop and Chocolatey, and a signed installer
+4. winget, Scoop and Chocolatey packages and a signed installer (release zips are already built by the tag workflow)
 5. A git terminal (not scheduled; to be designed)
 6. Windows Hello / DPAPI unlock, an auto-lock timer and clipboard clearing
 
