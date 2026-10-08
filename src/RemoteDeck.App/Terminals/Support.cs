@@ -41,17 +41,17 @@ internal sealed class SingleCredentialBroker : ICredentialBroker
 internal sealed class DelegateObserver : IObserver<ReadOnlyMemory<byte>>
 {
     private readonly Action<byte[]> _onData;
+    private readonly Action? _onCompleted;
 
-    public DelegateObserver(Action<byte[]> onData)
+    public DelegateObserver(Action<byte[]> onData, Action? onCompleted = null)
     {
         _onData = onData;
+        _onCompleted = onCompleted;
     }
 
     public void OnNext(ReadOnlyMemory<byte> value) => _onData(value.ToArray());
 
-    public void OnCompleted()
-    {
-    }
+    public void OnCompleted() => _onCompleted?.Invoke();
 
     public void OnError(Exception error)
     {

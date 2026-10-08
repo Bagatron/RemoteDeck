@@ -9,6 +9,8 @@
   <ItemGroup>
     <!-- The SSH protocol itself. Everything else in this project is our own thin layer on top of it. -->
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <!-- Lets SSH.NET sign with keys held by the Windows OpenSSH agent or Pageant (MIT). -->
+    <PackageReference Include="SshNet.Agent" Version="2026.0.0" />
   </ItemGroup>
 
   <ItemGroup>
