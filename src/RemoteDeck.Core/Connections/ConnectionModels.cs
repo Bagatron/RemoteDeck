@@ -54,6 +54,13 @@ public sealed record ConnectionEntry(
         new(Id, Name, Type, Host, Port, effectiveCredentialId, Options, Tags);
 }
 
+/// <summary>
+/// A named login kept in the vault for reuse across connections (like an entry in a credential manager). Only the
+/// name and user name are kept here, so they can be listed while the vault is locked; the password is in the vault
+/// under <paramref name="Id"/>, which connections and folders refer to as their credential.
+/// </summary>
+public sealed record LoginEntry(string Id, string Name, string? Username = null);
+
 /// <summary>A node of the folder tree shown in the sidebar.</summary>
 public abstract record CatalogNode;
 

@@ -19,6 +19,9 @@ internal sealed class AppSettings
     /// <summary>Minutes of inactivity before the vault locks and the unlock prompt appears; 0 means never.</summary>
     public int AutoLockMinutes { get; set; } = RemoteDeck.Core.Security.AutoLock.DefaultMinutes;
 
+    /// <summary>Seconds before a copied password is cleared from the clipboard; 0 means never.</summary>
+    public int ClipboardClearSeconds { get; set; } = RemoteDeck.Core.Security.ClipboardGuard.DefaultSeconds;
+
     /// <summary>Plugins the user turned on, with the permissions they approved for each (plugin id to permission names).</summary>
     public Dictionary<string, List<string>> Plugins { get; set; } = new();
 

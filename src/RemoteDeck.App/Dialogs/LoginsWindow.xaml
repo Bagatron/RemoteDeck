@@ -1,0 +1,26 @@
+<Window x:Class="RemoteDeck.App.Dialogs.LoginsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Saved logins" Width="560" Height="400" MinWidth="420" MinHeight="260"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource Back}" Foreground="{DynamicResource Text}">
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}" Margin="0,0,0,10"
+                   Text="Logins you keep here are stored in the encrypted vault. Pick one when you add or edit an SSH or Remote Desktop connection to fill in the user name and use its password." />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button Content="Add..." Padding="14,5" Click="Add_Click" />
+            <Button x:Name="EditButton" Content="Edit..." Padding="14,5" Margin="8,0,0,0" Click="Edit_Click" IsEnabled="False" />
+            <Button x:Name="DeleteButton" Content="Delete" Padding="14,5" Margin="8,0,0,0" Click="Delete_Click" IsEnabled="False" />
+        </StackPanel>
+        <ListView x:Name="List" SelectionChanged="List_SelectionChanged" MouseDoubleClick="List_DoubleClick"
+                  Background="{DynamicResource Panel}" Foreground="{DynamicResource Text}" BorderBrush="{DynamicResource Line}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Name" Width="200" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="Username" Width="170" DisplayMemberBinding="{Binding UserText}" />
+                    <GridViewColumn Header="Used by" Width="100" DisplayMemberBinding="{Binding UsedText}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>

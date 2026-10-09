@@ -18,7 +18,11 @@ public partial class ConnectionDialog : Window
 
     private sealed record JumpChoice(string? Id, string Label);
 
+    private sealed record LoginChoice(string? Id, string Label, string? Username);
+
     private readonly ConnectionEntry? _existing;
+    private readonly bool _hasLogins;
+    private readonly bool _loginsReady;
 
     /// <summary>Connection types provided by running plugins; offered next to SSH and RDP.</summary>
     internal static IReadOnlyList<IConnectionFactory> ExtraTypes { get; set; } = Array.Empty<IConnectionFactory>();
@@ -84,6 +88,14 @@ public partial class ConnectionDialog : Window
             AiServerBox.SelectedIndex = 0;
         }
 
+        var logins = new List<LoginChoice> { new(null, "(none: type the login below)", null) };
+        logins.AddRange(store.Logins.Select(l => new LoginChoice(l.Id, string.IsNullOrEmpty(l.Username) ? l.Name : $"{l.Name} ({l.Username})", l.Username)));
+        _hasLogins = logins.Count > 1;
+        LoginBox.ItemsSource = logins;
+        LoginBox.SelectedItem = logins.FirstOrDefault(l => l.Id is not null && l.Id == existing?.CredentialId) ?? logins[0];
+        _loginsReady = true;
+        LoginBox_SelectionChanged(LoginBox, null!);
+
         if (EditorBox.SelectedItem is null)
         {
             EditorBox.SelectedIndex = 0;
@@ -109,6 +121,7 @@ public partial class ConnectionDialog : Window
             AiModelBox.Text = Option(existing, "model");
             AiSystemBox.Text = Option(existing, "system");
             AiCertBox.IsChecked = string.Equals(Option(existing, "acceptUntrustedCertificate"), "true", StringComparison.OrdinalIgnoreCase);
+            AiRememberBox.IsChecked = string.Equals(Option(existing, "rememberChat"), "true", StringComparison.OrdinalIgnoreCase);
             EditorBox.SelectedItem = EditorBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "editor").ToLowerInvariant()) ?? EditorBox.Items[0];
             ProgramBox.Text = Option(existing, "program");
             EditorArgsBox.Text = Option(existing, "arguments");
@@ -152,6 +165,12 @@ public partial class ConnectionDialog : Window
 
     private bool IsSerial => SelectedType == "serial";
 
+    /// <summary>The saved login picked for this connection, or null when the login is typed here.</summary>
+    internal string? SelectedLoginId => IsSsh || IsRdp ? (LoginBox.SelectedItem as LoginChoice)?.Id : null;
+
+    /// <summary>True when the typed login should also be added to Saved logins.</summary>
+    internal bool SaveAsLogin => SaveAsLoginBox.Visibility == Visibility.Visible && SaveAsLoginBox.IsChecked == true;
+
     private bool IsGit => SelectedType == "git";
 
     private bool IsAi => SelectedType == "ai";
@@ -160,9 +179,48 @@ public partial class ConnectionDialog : Window
 
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
+    private void LoginBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loginsReady || PasswordBox is null || UserBox is null || PasswordLabel is null || SaveAsLoginBox is null)
+        {
+            return;
+        }
+
+        if (LoginBox.SelectedItem is LoginChoice { Id: not null } choice)
+        {
+            if (!string.IsNullOrEmpty(choice.Username))
+            {
+                UserBox.Text = choice.Username;
+            }
+
+            PasswordBox.Clear();
+            PasswordBox.IsEnabled = false;
+            PasswordLabel.Text = "Password (from the saved login)";
+        }
+        else
+        {
+            PasswordBox.IsEnabled = true;
+            PasswordLabel.Text = _existing?.CredentialId is not null ? "Password (leave empty to keep the saved one)" : "Password";
+        }
+
+        UpdateLoginControls();
+    }
+
+    private void UpdateLoginControls()
+    {
+        if (LoginPickPanel is null || SaveAsLoginBox is null || TypeBox?.SelectedItem is null)
+        {
+            return;
+        }
+
+        var supportsLogins = IsSsh || IsRdp;
+        LoginPickPanel.Visibility = supportsLogins && _hasLogins ? Visibility.Visible : Visibility.Collapsed;
+        SaveAsLoginBox.Visibility = supportsLogins && SelectedLoginId is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || AiPanel is null || AiKeyLabel is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || AiPanel is null || AiKeyLabel is null || KeyExpander is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
         {
             return;
         }
@@ -188,8 +246,9 @@ public partial class ConnectionDialog : Window
         WebPanel.Visibility = IsWeb ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = IsRdp ? Visibility.Visible : Visibility.Collapsed;
 
-        // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
-        SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
+        // Remote Desktop can keep a password too (used when it opens in a tab); only SSH has key files.
+        KeyExpander.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
+        UpdateLoginControls();
         HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : IsEditor ? "Folder or file to open" : IsAi ? "Server address (for example http://localhost:3000)" : "Host";
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
@@ -382,7 +441,8 @@ public partial class ConnectionDialog : Window
                 ("server", (AiServerBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "openwebui"),
                 ("model", AiModelBox.Text.Trim()),
                 ("system", AiSystemBox.Text.Trim()),
-                ("acceptUntrustedCertificate", AiCertBox.IsChecked == true ? "true" : string.Empty)
+                ("acceptUntrustedCertificate", AiCertBox.IsChecked == true ? "true" : string.Empty),
+                ("rememberChat", AiRememberBox.IsChecked == true ? "true" : string.Empty)
             })
             {
                 if (aiValue.Length > 0)
@@ -567,7 +627,7 @@ public partial class ConnectionDialog : Window
             options.Remove("useAgent");
         }
 
-        var hasSecret = PasswordBox.Password.Length > 0 || _existing?.CredentialId is not null;
+        var hasSecret = PasswordBox.Password.Length > 0 || _existing?.CredentialId is not null || SelectedLoginId is not null;
         if (IsSsh && key.Length == 0 && !hasSecret && AgentBox.IsChecked != true)
         {
             Warn("Enter a password, choose a private key, or use the SSH agent.");
@@ -586,7 +646,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsAi ? AiKeyBox.Password : IsRdp || IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? string.Empty : PasswordBox.Password;
+        Password = IsAi ? AiKeyBox.Password : IsWeb || IsTelnet || IsSerial || IsGit || IsEditor || SelectedLoginId is not null ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

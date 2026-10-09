@@ -199,6 +199,116 @@ public class AiConnectionTests
         Assert.Equal(ConnectionState.Failed, connection.State);
     }
 
+    private static string TempFile()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rd-ai-" + Guid.NewGuid().ToString("N"));
+        return Path.Combine(folder, "chat.json");
+    }
+
+    private static Dictionary<string, string> WithHistory(string file, params (string Key, string Value)[] more)
+    {
+        var options = new Dictionary<string, string> { ["historyFile"] = file, ["model"] = "qwen" };
+        foreach (var (key, value) in more)
+        {
+            options[key] = value;
+        }
+
+        return options;
+    }
+
+    [Fact]
+    public async Task TheConversationIsSavedAfterEachReply()
+    {
+        var file = TempFile();
+        var (connection, _, _) = await Open(WithHistory(file));
+        await Type(connection, "hello");
+
+        var saved = ChatHistory.Load(file)!;
+        Assert.Equal("qwen", saved.Model);
+        Assert.Equal(new[] { "user", "assistant" }, saved.Messages.Select(m => m.Role));
+        Assert.Equal("hello", saved.Messages[0].Content);
+        Assert.Equal("Hello\nthere", saved.Messages[1].Content);
+    }
+
+    [Fact]
+    public async Task AReopenedChatRestoresAndSendsTheEarlierContext()
+    {
+        var file = TempFile();
+        var (first, _, _) = await Open(WithHistory(file));
+        await Type(first, "my name is Mickey");
+
+        var (second, output, http) = await Open(WithHistory(file));
+        Assert.Contains("Restored 2 earlier message", output.Text);
+        Assert.Contains("my name is Mickey", output.Text);
+
+        await Type(second, "what is my name?");
+        var chat = http.Requests.Single(r => r.Method == HttpMethod.Post);
+        Assert.Contains("my name is Mickey", chat.Body);
+        Assert.Contains("what is my name?", chat.Body);
+    }
+
+    [Fact]
+    public async Task ClearForgetsTheSavedConversation()
+    {
+        var file = TempFile();
+        var (connection, _, _) = await Open(WithHistory(file));
+        await Type(connection, "hello");
+        await Type(connection, "/clear");
+
+        Assert.Empty(ChatHistory.Load(file)!.Messages);
+    }
+
+    [Fact]
+    public async Task SaveHistoryToWritesACopyForAnotherWorkspace()
+    {
+        var file = TempFile();
+        var copy = TempFile();
+        var (connection, _, _) = await Open(WithHistory(file));
+        await Type(connection, "hello");
+
+        connection.SaveHistoryTo(copy);
+
+        Assert.Equal(2, ChatHistory.Load(copy)!.Messages.Count);
+    }
+
+    [Fact]
+    public async Task OnlyTheMostRecentMessagesAreSentAsContext()
+    {
+        var file = TempFile();
+        var (connection, _, http) = await Open(WithHistory(file, ("contextMessages", "2")));
+        await Type(connection, "first");
+        await Type(connection, "second");
+        await Type(connection, "third");
+
+        var last = http.Requests.Last(r => r.Method == HttpMethod.Post);
+        Assert.Contains("third", last.Body);
+        Assert.DoesNotContain("first", last.Body);
+        Assert.Equal(3, ChatHistory.Load(file)!.Messages.Count(m => m.Role == "user"));
+    }
+
+    [Fact]
+    public void ADamagedHistoryFileIsIgnored()
+    {
+        var file = TempFile();
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "{ not json");
+
+        Assert.Null(ChatHistory.Load(file));
+        Assert.Null(ChatHistory.Load(Path.Combine(Path.GetTempPath(), "does-not-exist.json")));
+    }
+
+    [Fact]
+    public void AnEmptyStateRemovesTheFile()
+    {
+        var file = TempFile();
+        ChatHistory.Save(file, new ChatState("m", "be brief", new[] { new ChatMessage("user", "hi") }));
+        Assert.True(File.Exists(file));
+
+        ChatHistory.Save(file, new ChatState(string.Empty, string.Empty, Array.Empty<ChatMessage>()));
+
+        Assert.False(File.Exists(file));
+    }
+
     [Fact]
     public void ToTerminalUsesCarriageReturns() =>
         Assert.Equal("a\r\nb\r\nc", AiConnection.ToTerminal("a\nb\r\nc"));

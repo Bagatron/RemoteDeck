@@ -44,12 +44,18 @@
         </Grid>
 
         <StackPanel x:Name="LoginPanel">
+        <StackPanel x:Name="LoginPickPanel" Visibility="Collapsed">
+            <TextBlock Text="Saved login" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <ComboBox x:Name="LoginBox" Padding="6,5" DisplayMemberPath="Label" SelectionChanged="LoginBox_SelectionChanged" />
+        </StackPanel>
         <TextBlock Text="Username" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <TextBox x:Name="UserBox" Padding="6,5" />
 
         <StackPanel x:Name="SecretPanel">
         <TextBlock x:Name="PasswordLabel" Text="Password" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <PasswordBox x:Name="PasswordBox" Padding="6,5" />
+        <CheckBox x:Name="SaveAsLoginBox" Visibility="Collapsed" Margin="0,8,0,0"
+                  Content="Also add this login to Saved logins, so other connections can use it" />
 
         <Expander x:Name="KeyExpander" Header="Key file or SSH agent" Margin="0,10,0,0" Foreground="{StaticResource TextDim}">
             <StackPanel Margin="0,4,0,0">
@@ -68,7 +74,7 @@
 
         <StackPanel x:Name="RdpPanel" Visibility="Collapsed">
             <CheckBox x:Name="ExternalBox" Content="Open in the Windows Remote Desktop app instead of a tab" Margin="0,12,0,0" />
-            <TextBlock Text="By default the session opens in a RemoteDeck tab and asks for the password each time; it is never saved."
+            <TextBlock Text="By default the session opens in a RemoteDeck tab. A saved password (above, or from a saved login) is used there automatically; leave it empty to be asked each time. The Windows Remote Desktop app always asks for the password itself."
                        Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 
@@ -137,7 +143,10 @@
             <TextBox x:Name="AiModelBox" Padding="6,5" ToolTip="For example: llama3.1:8b" />
             <TextBlock Text="System prompt (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
             <TextBox x:Name="AiSystemBox" Padding="6,5" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="48" />
+            <CheckBox x:Name="AiRememberBox" Content="Remember this conversation when it is opened on its own" Margin="0,12,0,0" />
             <CheckBox x:Name="AiCertBox" Content="Accept the server's certificate even if it is not trusted" Margin="0,12,0,0" />
+            <TextBlock Text="Chats opened from a saved workspace always keep their conversation with that workspace, so reopening it brings the context back."
+                       Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
             <TextBlock Text="In Open WebUI, make a key under Settings > Account > API Keys. The address is the server's web address, for example http://localhost:3000. In the chat, type /help for commands. The key is kept in the encrypted vault."
                        Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>

@@ -5,7 +5,7 @@ using RemoteDeck.Plugin;
 
 namespace RemoteDeck.Core.Connections;
 
-internal sealed record CatalogDocument(int Version, List<FolderEntry>? Folders, List<ConnectionEntry>? Connections);
+internal sealed record CatalogDocument(int Version, List<FolderEntry>? Folders, List<ConnectionEntry>? Connections, List<LoginEntry>? Logins = null);
 
 /// <summary>
 /// The user's saved connections and the folders they sit in. Holds credential <i>references</i> only; the
@@ -24,6 +24,7 @@ public sealed class ConnectionStore
     private readonly object _gate = new();
     private readonly Dictionary<string, FolderEntry> _folders = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ConnectionEntry> _connections = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LoginEntry> _logins = new(StringComparer.Ordinal);
 
     /// <summary>Raised after any change, so the host can save the file and refresh the tree.</summary>
     public event EventHandler? Changed;
@@ -48,6 +49,18 @@ public sealed class ConnectionStore
             lock (_gate)
             {
                 return _connections.Values.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+        }
+    }
+
+    /// <summary>The saved logins, by name.</summary>
+    public IReadOnlyList<LoginEntry> Logins
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _logins.Values.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             }
         }
     }
@@ -343,6 +356,93 @@ public sealed class ConnectionStore
         }
     }
 
+    // ---- saved logins ----
+
+    public LoginEntry? FindLogin(string id)
+    {
+        lock (_gate)
+        {
+            return _logins.GetValueOrDefault(id);
+        }
+    }
+
+    public void AddLogin(LoginEntry login)
+    {
+        var entry = NormalizeLogin(login);
+        lock (_gate)
+        {
+            if (_logins.ContainsKey(entry.Id))
+            {
+                throw new CatalogException($"A login with id '{entry.Id}' already exists.");
+            }
+
+            RequireUniqueLoginName(entry);
+            _logins[entry.Id] = entry;
+        }
+
+        RaiseChanged();
+    }
+
+    public void UpdateLogin(LoginEntry login)
+    {
+        var entry = NormalizeLogin(login);
+        lock (_gate)
+        {
+            if (!_logins.ContainsKey(entry.Id))
+            {
+                throw new CatalogException($"No login with id '{entry.Id}'.");
+            }
+
+            RequireUniqueLoginName(entry);
+            _logins[entry.Id] = entry;
+        }
+
+        RaiseChanged();
+    }
+
+    /// <summary>Removes the login from the list. Connections that used it keep their credential reference.</summary>
+    public bool RemoveLogin(string id)
+    {
+        bool removed;
+        lock (_gate)
+        {
+            removed = _logins.Remove(id);
+        }
+
+        if (removed)
+        {
+            RaiseChanged();
+        }
+
+        return removed;
+    }
+
+    /// <summary>How many connections and folders use this credential directly.</summary>
+    public int UsesOfCredential(string credentialId)
+    {
+        lock (_gate)
+        {
+            return _connections.Values.Count(c => c.CredentialId == credentialId)
+                + _folders.Values.Count(f => f.CredentialId == credentialId);
+        }
+    }
+
+    /// <summary>A login name that is free, adding " (2)", " (3)" and so on when needed.</summary>
+    public string UniqueLoginName(string wanted)
+    {
+        var baseName = string.IsNullOrWhiteSpace(wanted) ? "Login" : wanted.Trim();
+        lock (_gate)
+        {
+            var name = baseName;
+            for (var n = 2; _logins.Values.Any(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)); n++)
+            {
+                name = $"{baseName} ({n})";
+            }
+
+            return name;
+        }
+    }
+
     // ---- credentials ----
 
     /// <summary>
@@ -390,6 +490,11 @@ public sealed class ConnectionStore
                 {
                     ids.Add(connection.CredentialId);
                 }
+            }
+
+            foreach (var login in _logins.Values)
+            {
+                ids.Add(login.Id);
             }
 
             return ids;
@@ -485,6 +590,10 @@ public sealed class ConnectionStore
                 _connections.Values
                     .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(c => c.Id, StringComparer.Ordinal)
+                    .ToList(),
+                _logins.Values
+                    .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(l => l.Id, StringComparer.Ordinal)
                     .ToList());
         }
 
@@ -541,6 +650,15 @@ public sealed class ConnectionStore
             }
 
             store.RequireFolder(entry.FolderId);
+        }
+
+        foreach (var login in document.Logins ?? new List<LoginEntry>())
+        {
+            var entry = NormalizeLogin(login);
+            if (!store._logins.TryAdd(entry.Id, entry))
+            {
+                throw new CatalogException($"Duplicate login id '{entry.Id}'.");
+            }
         }
 
         return store;
@@ -660,6 +778,29 @@ public sealed class ConnectionStore
             Icon = Blank(connection.Icon),
             Notes = string.IsNullOrWhiteSpace(connection.Notes) ? null : connection.Notes
         };
+    }
+
+    private static LoginEntry NormalizeLogin(LoginEntry? login)
+    {
+        if (login is null)
+        {
+            throw new CatalogException("A login entry is missing.");
+        }
+
+        return login with
+        {
+            Id = RequireText(login.Id, "login id"),
+            Name = RequireText(login.Name, "login name"),
+            Username = Blank(login.Username)
+        };
+    }
+
+    private void RequireUniqueLoginName(LoginEntry entry)
+    {
+        if (_logins.Values.Any(l => l.Id != entry.Id && string.Equals(l.Name, entry.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new CatalogException($"There is already a saved login called '{entry.Name}'.");
+        }
     }
 
     private static IReadOnlyList<string>? NormalizeTags(IReadOnlyList<string>? tags)

@@ -149,7 +149,7 @@ public class PluginHostTests : IDisposable
         Assert.Empty(PluginHost.Discover(new[] { Path.Combine(_root, "nowhere") }));
 
     [Fact]
-    public void ALoadedPlugin_RegistersItsCommandsAndTypes_AndRunsTheCommand()
+    public async Task ALoadedPlugin_RegistersItsCommandsAndTypes_AndRunsTheCommand()
     {
         MakePlugin("good", Manifest());
         using var host = Host();
@@ -158,7 +158,7 @@ public class PluginHostTests : IDisposable
 
         Assert.Equal("Test: hello", Assert.Single(loaded.Commands).Title);
         Assert.Equal("test-echo", Assert.Single(host.ConnectionTypes).Type);
-        loaded.Commands[0].Execute(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        await loaded.Commands[0].Execute(CancellationToken.None);
         Assert.Contains("test.plugin:hello ran", _log);
         Assert.True(Directory.Exists(Path.Combine(_root, "data", "test.plugin")));
     }

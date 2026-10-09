@@ -91,7 +91,8 @@
                     </Grid.RowDefinitions>
                     <Button x:Name="ThemeButton" Grid.Row="0" Grid.Column="0" Content="Theme  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="ThemeButton_Click" />
                     <Button Grid.Row="0" Grid.Column="2" Content="Import..." Padding="6,4" HorizontalAlignment="Stretch" Click="Import_Click" />
-                    <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
+                    <Button Grid.Row="2" Grid.Column="0" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
+                    <Button Grid.Row="2" Grid.Column="2" Content="Logins..." Padding="6,4" HorizontalAlignment="Stretch" ToolTip="Saved logins" Click="Logins_Click" />
                 </Grid>
             </Border>
             <Grid>
@@ -107,6 +108,7 @@
                         <MenuItem x:Name="MenuOpen" Header="Open" Click="MenuOpen_Click" />
                         <MenuItem x:Name="MenuOpenNew" Header="Open in new tab" Click="MenuOpenNew_Click" />
                         <MenuItem x:Name="MenuSftp" Header="Browse files (SFTP)" Click="MenuSftp_Click" />
+                        <MenuItem x:Name="MenuCopyPassword" Header="Copy password" Click="MenuCopyPassword_Click" />
                         <MenuItem x:Name="MenuEdit" Header="Edit..." Click="MenuEdit_Click" />
                         <MenuItem x:Name="MenuRename" Header="Rename folder..." Click="MenuRename_Click" />
                         <MenuItem x:Name="MenuDelete" Header="Delete" Click="MenuDelete_Click" />

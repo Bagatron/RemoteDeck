@@ -13,6 +13,7 @@ using RemoteDeck.App.Terminals;
 using System.Reflection;
 using RemoteDeck.Core;
 using RemoteDeck.Core.Broadcast;
+using RemoteDeck.Core.Chats;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Core.Logging;
 using RemoteDeck.Core.Import;
@@ -38,6 +39,7 @@ public partial class MainWindow : Window
     private readonly SshConnectionFactory _ssh;
     private readonly TelnetConnectionFactory _telnet = new();
     private readonly AiConnectionFactory _ai = new();
+    private RemoteDeck.Core.Security.ClipboardGuard _clipboardGuard = null!;
     private readonly SerialConnectionFactory _serial = new();
     private readonly GitConnectionFactory _git = new();
     private readonly PluginManager _plugins;
@@ -182,7 +184,14 @@ public partial class MainWindow : Window
             }
         };
         _idleTimer.Start();
-        Closing += (_, _) => _closing = true;
+        _clipboardGuard = new RemoteDeck.Core.Security.ClipboardGuard(
+            () => Dispatcher.Invoke(() => Clipboard.ContainsText() ? Clipboard.GetText() : null),
+            () => Dispatcher.Invoke(Clipboard.Clear));
+        Closing += (_, _) =>
+        {
+            _closing = true;
+            _clipboardGuard.ClearNow();
+        };
     }
 
     private void OnSessionSwitch(object? sender, Microsoft.Win32.SessionSwitchEventArgs e)
@@ -270,6 +279,11 @@ public partial class MainWindow : Window
 
     private void Plugins_Click(object sender, RoutedEventArgs e) => ShowPlugins();
 
+    private void Logins_Click(object sender, RoutedEventArgs e)
+    {
+        new LoginsWindow(this, _data.Vault, _data.Store).ShowDialog();
+    }
+
     private async Task RunPluginCommandAsync(PluginCommand command)
     {
         try
@@ -312,6 +326,7 @@ public partial class MainWindow : Window
         try
         {
             KeepNotesWithWorkspace(tab, dialog.Value);
+            KeepChatsWithWorkspace(tab, dialog.Value);
             var workspace = tab.ToWorkspace(dialog.Value);
             Library.Save(workspace);
             var saved = LayoutTree.Panes(workspace.Layout).Count(p => p.ConnectionId is not null);
@@ -350,6 +365,35 @@ public partial class MainWindow : Window
             overlay.View.MoveTo(System.IO.Path.Combine(NoteLibrary.WorkspaceFolder(workspaceName), NoteLibrary.Slug(paneId)), move: shared);
             session.NotesFolder = overlay.View.Folder;
         }
+    }
+
+    /// <summary>AI chats in the tab being saved keep their conversation with the workspace, one file per pane.</summary>
+    private static void KeepChatsWithWorkspace(WorkspaceTab tab, string workspaceName)
+    {
+        foreach (var (paneId, session) in tab.PanesWithIds())
+        {
+            if (session.Connection is not AiConnection chat)
+            {
+                continue;
+            }
+
+            try
+            {
+                var path = ChatPaths.ForWorkspacePane(ChatPaths.DefaultRoot(), workspaceName, paneId);
+                chat.SaveHistoryTo(path);
+                chat.HistoryFile = path;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The workspace still saves; the chat just will not carry its context.
+            }
+        }
+    }
+
+    private static ConnectionDefinition WithChatFile(ConnectionDefinition definition, string path)
+    {
+        var options = new Dictionary<string, string>(definition.Options ?? new Dictionary<string, string>()) { ["historyFile"] = path };
+        return definition with { Options = options };
     }
 
     private void OpenWorkspace(Workspace workspace)
@@ -403,6 +447,12 @@ public partial class MainWindow : Window
             if (definition is null || factory is null)
             {
                 continue;
+            }
+
+            if (string.Equals(entry.Type, "ai", StringComparison.OrdinalIgnoreCase))
+            {
+                // Each AI chat pane keeps its conversation with the workspace, so reopening it brings the context back.
+                definition = WithChatFile(definition, ChatPaths.ForWorkspacePane(ChatPaths.DefaultRoot(), workspace.Name, pane.Id));
             }
 
             var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
@@ -675,6 +725,7 @@ public partial class MainWindow : Window
             new("Search connections", "Ctrl+Shift+F", () => RunShortcut("ctrl+shift+f")),
             new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
+            new("Saved logins...", string.Empty, () => Logins_Click(this, new RoutedEventArgs())),
             new("Lock now", "Ctrl+Shift+L", LockNow),
             AutoLockItem(5),
             AutoLockItem(15),
@@ -1116,6 +1167,9 @@ public partial class MainWindow : Window
         MenuOpen.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuOpenNew.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuSftp.Visibility = tag is ConnectionEntry { Type: "ssh" } ? Visibility.Visible : Visibility.Collapsed;
+        MenuCopyPassword.Visibility = tag is ConnectionEntry withPassword && _data.Store.CredentialIdFor(withPassword.Id) is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         MenuEdit.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuRename.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
         MenuDelete.Visibility = connection || folder ? Visibility.Visible : Visibility.Collapsed;
@@ -1176,6 +1230,48 @@ public partial class MainWindow : Window
         {
             SetStatus(string.Empty);
             MessageBox.Show(this, "Could not read the saved password: " + ex.Message, "SFTP", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void MenuCopyPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tree.SelectedItem is not TreeViewItem { Tag: ConnectionEntry entry }
+            || _data.Store.CredentialIdFor(entry.Id) is not { } credentialId)
+        {
+            return;
+        }
+
+        try
+        {
+            string? password = null;
+            await _data.Vault.UseAsync(
+                credentialId,
+                credential =>
+                {
+                    credential.ReadPassword(secret => password = secret.ToString());
+                    return ValueTask.FromResult(true);
+                });
+            if (string.IsNullOrEmpty(password))
+            {
+                SetStatus($"{entry.Name} has no saved password.");
+                return;
+            }
+
+            // Keep it out of Windows clipboard history and cloud sync, then clear it after a while.
+            var data = new DataObject();
+            data.SetText(password);
+            data.SetData("ExcludeClipboardContentFromMonitorProcessing", new System.IO.MemoryStream(new byte[] { 1, 0, 0, 0 }));
+            Clipboard.SetDataObject(data, copy: true);
+
+            var seconds = App.Settings.ClipboardClearSeconds;
+            SetStatus(seconds > 0
+                ? $"Password for {entry.Name} copied. It is cleared from the clipboard in {seconds} seconds."
+                : $"Password for {entry.Name} copied.");
+            _ = _clipboardGuard.WatchAsync(password, TimeSpan.FromSeconds(seconds));
+        }
+        catch (Exception ex) when (ex is VaultException or KeyNotFoundException or System.Runtime.InteropServices.COMException)
+        {
+            MessageBox.Show(this, "Could not copy the password: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1241,11 +1337,39 @@ public partial class MainWindow : Window
         var entry = dialog.Result!;
 
         // The password goes into the encrypted vault; the saved connection only remembers which vault entry to use.
+        // A connection's own password lives under "cred-<id>"; a saved login is shared, so typing a password never
+        // overwrites one.
+        var ownId = "cred-" + entry.Id;
         var credentialId = existing?.CredentialId;
-        if (dialog.Password.Length > 0)
+        var username = entry.Options is not null && entry.Options.TryGetValue("username", out var typedUser) ? typedUser : null;
+        try
         {
-            credentialId ??= "cred-" + entry.Id;
-            _data.Vault.Set(credentialId, null, dialog.Password);
+            if (dialog.SelectedLoginId is { } loginId)
+            {
+                credentialId = loginId;
+            }
+            else if (dialog.Password.Length > 0 && dialog.SaveAsLogin)
+            {
+                var newLoginId = "login-" + ConnectionStore.NewId();
+                _data.Vault.Set(newLoginId, username, dialog.Password);
+                _data.Store.AddLogin(new LoginEntry(newLoginId, _data.Store.UniqueLoginName(string.IsNullOrEmpty(username) ? entry.Name : username), username));
+                credentialId = newLoginId;
+            }
+            else if (dialog.Password.Length > 0)
+            {
+                credentialId = ownId;
+                _data.Vault.Set(ownId, username, dialog.Password);
+            }
+            else if (credentialId is not null && _data.Store.FindLogin(credentialId) is not null)
+            {
+                // The connection used a saved login and the dialog now says "none" without a password of its own.
+                credentialId = null;
+            }
+        }
+        catch (Exception ex) when (ex is VaultException or CatalogException)
+        {
+            MessageBox.Show(this, "Could not save the login: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
         entry = entry with { CredentialId = credentialId };
@@ -1260,6 +1384,12 @@ public partial class MainWindow : Window
                 _data.Store.UpdateConnection(entry);
             }
         });
+
+        // A password that belonged only to this connection and is no longer used goes out of the vault.
+        if (existing?.CredentialId is { } previous && previous != credentialId && !_data.Store.ReferencedCredentialIds().Contains(previous))
+        {
+            _data.Vault.Remove(previous);
+        }
 
         RefreshTree();
     }
@@ -1755,19 +1885,84 @@ public partial class MainWindow : Window
         var user = entry.Options is not null && entry.Options.TryGetValue("username", out var u) ? u : string.Empty;
         var domain = entry.Options is not null && entry.Options.TryGetValue("domain", out var d) ? d : null;
 
-        var prompt = new RdpPasswordDialog(user, entry.Host) { Owner = this };
-        if (prompt.ShowDialog() != true)
+        // A saved password (the connection's own, a saved login, or one from its folder) means no prompt.
+        var (savedUser, savedPassword) = ReadSavedLogin(entry);
+        if (user.Length == 0 && !string.IsNullOrEmpty(savedUser))
         {
-            return;
+            user = savedUser;
+        }
+
+        string password;
+        if (!string.IsNullOrEmpty(savedPassword))
+        {
+            password = savedPassword;
+        }
+        else
+        {
+            var prompt = new RdpPasswordDialog(user, entry.Host) { Owner = this };
+            if (prompt.ShowDialog() != true)
+            {
+                return;
+            }
+
+            password = prompt.Password;
+            if (prompt.Remember)
+            {
+                RememberRdpPassword(entry, user, password);
+            }
         }
 
         var info = new RdpInfo(entry.Name, entry.Host, entry.Port ?? 3389, user.Length > 0 ? user : null, domain);
         var tab = new WorkspaceTab(info);
-        var view = new RdpSessionView(info, prompt.Password) { Visibility = Visibility.Collapsed };
+        var view = new RdpSessionView(info, password) { Visibility = Visibility.Collapsed };
         _webViews[tab.Id] = view;
         WebHost.Children.Add(view);
         NewTab(tab);
         SetStatus($"Opened {entry.Name} in a tab.");
+    }
+
+    /// <summary>The user name and password saved for a connection, if any. A locked vault or a missing entry gives nothing.</summary>
+    private (string? User, string? Password) ReadSavedLogin(ConnectionEntry entry)
+    {
+        if (_data.Store.CredentialIdFor(entry.Id) is not { } credentialId)
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            string? user = null;
+            string? password = null;
+            _data.Vault.UseAsync(
+                credentialId,
+                credential =>
+                {
+                    user = credential.Username;
+                    credential.ReadPassword(secret => password = secret.ToString());
+                    return ValueTask.FromResult(true);
+                }).AsTask().GetAwaiter().GetResult();
+            return (user, password);
+        }
+        catch (Exception ex) when (ex is VaultException or KeyNotFoundException)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>Keeps a password the user typed for a Remote Desktop connection, under the connection's own vault entry.</summary>
+    private void RememberRdpPassword(ConnectionEntry entry, string user, string password)
+    {
+        try
+        {
+            var credentialId = "cred-" + entry.Id;
+            _data.Vault.Set(credentialId, user, password);
+            Try(() => _data.Store.UpdateConnection(entry with { CredentialId = credentialId }));
+            SetStatus($"Password for {entry.Name} saved in the vault.");
+        }
+        catch (Exception ex) when (ex is VaultException or CatalogException)
+        {
+            MessageBox.Show(this, "Could not save the password: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     /// <summary>Opens the connection in the Windows Remote Desktop client. It asks for the password itself, so none is passed on.</summary>
@@ -1948,6 +2143,15 @@ public partial class MainWindow : Window
         string title,
         bool member)
     {
+        if (string.Equals(definition.Type, "ai", StringComparison.OrdinalIgnoreCase)
+            && definition.Options is { } chatOptions
+            && !chatOptions.ContainsKey("historyFile")
+            && chatOptions.TryGetValue("rememberChat", out var remember)
+            && string.Equals(remember, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            definition = WithChatFile(definition, ChatPaths.ForConnection(ChatPaths.DefaultRoot(), definition.Id));
+        }
+
         var created = factory.Create(definition, broker);
         if (created is not ITerminalConnection connection)
         {

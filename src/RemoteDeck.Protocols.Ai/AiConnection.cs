@@ -38,6 +38,8 @@ public sealed class AiConnection : ITerminalConnection
     private readonly object _inputGate = new();
     private readonly LineEditor _editor = new();
     private readonly List<ChatMessage> _history = new();
+    private readonly object _historyGate = new();
+    private readonly int _contextMessages;
     private readonly string _flavor;
 
     private ConnectionState _state = ConnectionState.Disconnected;
@@ -59,6 +61,20 @@ public sealed class AiConnection : ITerminalConnection
         _flavor = Option("server");
         _model = Option("model");
         _system = Option("system");
+        HistoryFile = Option("historyFile") is { Length: > 0 } file ? file : null;
+        _contextMessages = int.TryParse(Option("contextMessages"), out var context) && context is >= 2 and <= 1000 ? context : 40;
+    }
+
+    /// <summary>
+    /// Where this chat keeps its conversation, or null to keep it only while the pane is open. The conversation is
+    /// loaded from here on connect and written back after every change.
+    /// </summary>
+    public string? HistoryFile { get; set; }
+
+    /// <summary>Writes the conversation as it is now to another file (used when a workspace is saved).</summary>
+    public void SaveHistoryTo(string path)
+    {
+        ChatHistory.Save(path, Snapshot());
     }
 
     public string Id => _definition.Id;
@@ -238,9 +254,122 @@ public sealed class AiConnection : ITerminalConnection
         return client;
     }
 
+    private ChatState Snapshot()
+    {
+        lock (_historyGate)
+        {
+            return new ChatState(_model, _system, _history.ToList());
+        }
+    }
+
+    /// <summary>Saves to <see cref="HistoryFile"/>; a file that cannot be written never interrupts the chat.</summary>
+    private void SaveHistory()
+    {
+        var file = HistoryFile;
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ChatHistory.Save(file, Snapshot());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Print($"{Dim}[could not save the conversation: {ex.Message}]{Reset}\r\n");
+        }
+    }
+
+    private void Remember(ChatMessage message)
+    {
+        lock (_historyGate)
+        {
+            _history.Add(message);
+        }
+    }
+
+    private void Forget(int count)
+    {
+        lock (_historyGate)
+        {
+            var n = Math.Min(count, _history.Count);
+            _history.RemoveRange(_history.Count - n, n);
+        }
+    }
+
+    private void ClearHistory()
+    {
+        lock (_historyGate)
+        {
+            _history.Clear();
+        }
+    }
+
+    /// <summary>The part of the conversation that is sent along with a new message: the most recent messages, starting at a question.</summary>
+    internal List<ChatMessage> Context()
+    {
+        lock (_historyGate)
+        {
+            var tail = _history.Count > _contextMessages ? _history.Skip(_history.Count - _contextMessages).ToList() : _history.ToList();
+            while (tail.Count > 0 && tail[0].Role != "user")
+            {
+                tail.RemoveAt(0);
+            }
+
+            return tail;
+        }
+    }
+
+    private void Restore()
+    {
+        var saved = ChatHistory.Load(HistoryFile);
+        if (saved is null)
+        {
+            return;
+        }
+
+        lock (_historyGate)
+        {
+            _history.Clear();
+            _history.AddRange(saved.Messages);
+        }
+
+        // What was chosen in the earlier session wins over the connection's defaults.
+        if (saved.Model.Length > 0)
+        {
+            _model = saved.Model;
+        }
+
+        if (saved.System.Length > 0)
+        {
+            _system = saved.System;
+        }
+
+        if (saved.Messages.Count == 0)
+        {
+            return;
+        }
+
+        Print($"{Dim}Restored {saved.Messages.Count} earlier message(s); they are sent along as context.{Reset}\r\n");
+        var shown = saved.Messages.Count > 6 ? saved.Messages.Skip(saved.Messages.Count - 6).ToList() : saved.Messages.ToList();
+        if (shown.Count < saved.Messages.Count)
+        {
+            Print($"{Dim}...{Reset}\r\n");
+        }
+
+        foreach (var message in shown)
+        {
+            Print(message.Role == "user"
+                ? $"{Prompt}{Dim}{ToTerminal(message.Content)}{Reset}\r\n"
+                : $"{Dim}{ToTerminal(message.Content)}{Reset}\r\n");
+        }
+    }
+
     private async Task StartAsync()
     {
         Print($"\u001b[1mAI chat\u001b[0m {Dim}— {_base.GetLeftPart(UriPartial.Authority)}{Reset}\r\n");
+        Restore();
         if (_model.Length == 0)
         {
             try
@@ -347,7 +476,8 @@ public sealed class AiConnection : ITerminalConnection
                     $"{Dim}Ctrl+C stops a reply that is being written.{Reset}\r\n");
                 break;
             case "/clear":
-                _history.Clear();
+                ClearHistory();
+                SaveHistory();
                 Print($"{Dim}Conversation cleared.{Reset}\r\n");
                 break;
             case "/system":
@@ -358,7 +488,8 @@ public sealed class AiConnection : ITerminalConnection
                 else
                 {
                     _system = arg;
-                    _history.Clear();
+                    ClearHistory();
+                    SaveHistory();
                     Print($"{Dim}System prompt set. Conversation cleared.{Reset}\r\n");
                 }
 
@@ -385,6 +516,7 @@ public sealed class AiConnection : ITerminalConnection
                 else
                 {
                     _model = int.TryParse(arg, out var number) && number >= 1 && number <= _lastModels.Count ? _lastModels[number - 1] : arg;
+                    SaveHistory();
                     Print($"{Dim}Model: {_model}{Reset}\r\n");
                 }
 
@@ -424,14 +556,14 @@ public sealed class AiConnection : ITerminalConnection
         }
 
         var http = _http ?? throw new AiConnectionException("The AI chat is not connected.");
-        _history.Add(new ChatMessage("user", text));
+        Remember(new ChatMessage("user", text));
         var messages = new List<ChatMessage>();
         if (_system.Length > 0)
         {
             messages.Add(new ChatMessage("system", _system));
         }
 
-        messages.AddRange(_history);
+        messages.AddRange(Context());
 
         var cancel = new CancellationTokenSource();
         lock (_inputGate)
@@ -451,7 +583,7 @@ public sealed class AiConnection : ITerminalConnection
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancel.Token).ConfigureAwait(false);
-                _history.RemoveAt(_history.Count - 1);
+                Forget(1);
                 throw new AiConnectionException(ChatProtocol.ErrorText((int)response.StatusCode, body));
             }
 
@@ -507,12 +639,14 @@ public sealed class AiConnection : ITerminalConnection
         Print("\r\n");
         if (reply.Length > 0)
         {
-            _history.Add(new ChatMessage("assistant", reply.ToString()));
+            Remember(new ChatMessage("assistant", reply.ToString()));
         }
         else
         {
-            _history.RemoveAt(_history.Count - 1);
+            Forget(1);
         }
+
+        SaveHistory();
     }
 
     internal static string ToTerminal(string text) =>
