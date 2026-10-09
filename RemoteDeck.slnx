@@ -7,6 +7,7 @@
     <Project Path="src/RemoteDeck.Protocols.Telnet/RemoteDeck.Protocols.Telnet.csproj" />
     <Project Path="src/RemoteDeck.Protocols.Serial/RemoteDeck.Protocols.Serial.csproj" />
     <Project Path="src/RemoteDeck.Protocols.Git/RemoteDeck.Protocols.Git.csproj" />
+    <Project Path="src/RemoteDeck.Protocols.Ai/RemoteDeck.Protocols.Ai.csproj" />
     <Project Path="src/RemoteDeck.App/RemoteDeck.App.csproj" />
   </Folder>
   <Folder Name="/tools/">
@@ -22,5 +23,6 @@
     <Project Path="tests/RemoteDeck.Protocols.Telnet.Tests/RemoteDeck.Protocols.Telnet.Tests.csproj" />
     <Project Path="tests/RemoteDeck.Protocols.Serial.Tests/RemoteDeck.Protocols.Serial.Tests.csproj" />
     <Project Path="tests/RemoteDeck.Protocols.Git.Tests/RemoteDeck.Protocols.Git.Tests.csproj" />
+    <Project Path="tests/RemoteDeck.Protocols.Ai.Tests/RemoteDeck.Protocols.Ai.Tests.csproj" />
   </Folder>
 </Solution>

@@ -22,6 +22,7 @@ using RemoteDeck.Core.Notes;
 using RemoteDeck.Core.Plugins;
 using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
+using RemoteDeck.Protocols.Ai;
 using RemoteDeck.Protocols.Git;
 using RemoteDeck.Protocols.Serial;
 using RemoteDeck.Protocols.Ssh;
@@ -36,6 +37,7 @@ public partial class MainWindow : Window
     private readonly TerminalHost _terminals;
     private readonly SshConnectionFactory _ssh;
     private readonly TelnetConnectionFactory _telnet = new();
+    private readonly AiConnectionFactory _ai = new();
     private readonly SerialConnectionFactory _serial = new();
     private readonly GitConnectionFactory _git = new();
     private readonly PluginManager _plugins;
@@ -1343,7 +1345,9 @@ public partial class MainWindow : Window
                     ? _serial
                     : string.Equals(type, "git", StringComparison.OrdinalIgnoreCase)
                         ? _git
-                        : _plugins.Host.ConnectionTypes.FirstOrDefault(f => string.Equals(f.Type, type, StringComparison.OrdinalIgnoreCase));
+                        : string.Equals(type, "ai", StringComparison.OrdinalIgnoreCase)
+                            ? _ai
+                            : _plugins.Host.ConnectionTypes.FirstOrDefault(f => string.Equals(f.Type, type, StringComparison.OrdinalIgnoreCase));
 
     private Task OpenSavedAsync(ConnectionEntry entry, bool newTab = false)
     {
@@ -1389,7 +1393,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, editors, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, AI chat, editors, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
                 "RemoteDeck",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -1997,6 +2001,11 @@ public partial class MainWindow : Window
             return ConnectOutcome.GaveUp;
         }
         catch (TelnetConnectionException ex)
+        {
+            Write(pane, $"\r\n\u001b[31m{ex.Message}\u001b[0m\r\n");
+            return ConnectOutcome.GaveUp;
+        }
+        catch (AiConnectionException ex)
         {
             Write(pane, $"\r\n\u001b[31m{ex.Message}\u001b[0m\r\n");
             return ConnectOutcome.GaveUp;

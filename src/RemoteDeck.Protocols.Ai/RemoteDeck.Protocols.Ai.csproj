@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Protocols.Ai</AssemblyName>
+    <RootNamespace>RemoteDeck.Protocols.Ai</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RemoteDeck.Plugin.Abstractions\RemoteDeck.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RemoteDeck.Protocols.Ai.Tests" />
+  </ItemGroup>
+
+</Project>

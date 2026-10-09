@@ -40,6 +40,7 @@
     <ProjectReference Include="..\RemoteDeck.Vault\RemoteDeck.Vault.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Ssh\RemoteDeck.Protocols.Ssh.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Telnet\RemoteDeck.Protocols.Telnet.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Protocols.Ai\RemoteDeck.Protocols.Ai.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Serial\RemoteDeck.Protocols.Serial.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Git\RemoteDeck.Protocols.Git.csproj" />
   </ItemGroup>

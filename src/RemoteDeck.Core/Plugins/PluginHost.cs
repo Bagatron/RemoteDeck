@@ -124,7 +124,7 @@ public sealed class PluginHost : IDisposable
     /// <summary>The contracts version this host implements.</summary>
     public static Version CurrentApiVersion { get; } = new(0, 1, 0);
 
-    private static readonly HashSet<string> ReservedTypes = new(StringComparer.OrdinalIgnoreCase) { "ssh", "rdp", "web", "telnet", "serial", "git", "editor" };
+    private static readonly HashSet<string> ReservedTypes = new(StringComparer.OrdinalIgnoreCase) { "ssh", "rdp", "web", "telnet", "serial", "git", "editor", "ai" };
 
     private readonly string _dataRoot;
     private readonly ICredentialBroker _credentials;

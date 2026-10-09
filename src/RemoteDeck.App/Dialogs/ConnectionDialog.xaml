@@ -19,6 +19,7 @@
             <ComboBoxItem Content="Telnet (not encrypted)" Tag="telnet" />
             <ComboBoxItem Content="Serial port (COM)" Tag="serial" />
             <ComboBoxItem Content="Git terminal (local folder)" Tag="git" />
+            <ComboBoxItem Content="AI chat (Open WebUI / OpenAI-compatible)" Tag="ai" />
             <ComboBoxItem Content="Editor / IDE (opens a window)" Tag="editor" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
@@ -118,6 +119,23 @@
             <CheckBox x:Name="TranslateBox" Content="Start a new line at the left edge for each line feed" IsChecked="True" Margin="0,10,0,0" />
             <TextBlock Text="Most devices end lines with just a line feed, which would otherwise step down the screen without going back to the left. Turn this off only if the output looks double-spaced."
                        Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
+        <StackPanel x:Name="AiPanel" Visibility="Collapsed">
+            <TextBlock Text="Server type" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <ComboBox x:Name="AiServerBox" Padding="6,5">
+                <ComboBoxItem Content="Open WebUI" Tag="openwebui" />
+                <ComboBoxItem Content="OpenAI-compatible (Ollama, LM Studio, OpenAI...)" Tag="openai" />
+            </ComboBox>
+            <TextBlock x:Name="AiKeyLabel" Text="API key (optional for local servers)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <PasswordBox x:Name="AiKeyBox" Padding="6,5" />
+            <TextBlock Text="Model (optional, the first one the server lists is used if empty)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <TextBox x:Name="AiModelBox" Padding="6,5" ToolTip="For example: llama3.1:8b" />
+            <TextBlock Text="System prompt (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <TextBox x:Name="AiSystemBox" Padding="6,5" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="48" />
+            <CheckBox x:Name="AiCertBox" Content="Accept the server's certificate even if it is not trusted" Margin="0,12,0,0" />
+            <TextBlock Text="In Open WebUI, make a key under Settings > Account > API Keys. The address is the server's web address, for example http://localhost:3000. In the chat, type /help for commands. The key is kept in the encrypted vault."
+                       Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 
         <StackPanel x:Name="GitPanel" Visibility="Collapsed">

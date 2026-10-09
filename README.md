@@ -21,6 +21,8 @@ An open-source, lightweight remote desktop and terminal manager for Windows. No 
 | `tests/RemoteDeck.Protocols.Ssh.Tests` | xUnit tests for SSH using fake sessions (no network): credentials, host keys, options, lifecycle. |
 | `tests/RemoteDeck.Protocols.Telnet.Tests` | xUnit tests for Telnet: the parser, and real sessions against a local test server. |
 | `src/RemoteDeck.Protocols.Git` | Local git terminals: a shell (Git Bash, PowerShell or cmd) running in a Windows pseudo console (ConPTY) inside a repository folder. Plugs in as an `ITerminalConnection`. |
+| `src/RemoteDeck.Protocols.Ai` | AI chat connections: streaming chat with any OpenAI-compatible server (Open WebUI, Ollama, LM Studio, OpenAI) in a terminal pane. Plugs in as an `ITerminalConnection`. |
+| `tests/RemoteDeck.Protocols.Ai.Tests` | xUnit tests for AI chat: request and stream parsing, the prompt line editor, and sessions against a fake server. |
 | `tests/RemoteDeck.Protocols.Git.Tests` | xUnit tests for git terminals: settings, shell lookup and sessions against a fake shell (no real console needed). |
 | `tests/RemoteDeck.Protocols.Serial.Tests` | xUnit tests for serial: settings, line-ending handling and sessions against a fake port (no hardware needed). |
 | `samples/HelloPlugin` | A tiny plugin: one palette command and a demo "echo" terminal type. Copy it to start your own. |
@@ -142,6 +144,7 @@ The first start asks you to create a master password; after that it asks for it 
 - **Broadcast:** click the broadcast icon in each pane header you want in the group, then either switch on `Broadcast` (whatever you type in a grouped pane goes to all of them; the panes get a red border) or type a command in the bar and press Enter to run it on every grouped pane. Multi-line pastes and risky commands such as `rm -rf` or `shutdown` ask for confirmation first. Broadcast always starts off.
 - **Quick connect:** type `user@host` (or `user@host:port`) above the tabs for a one-off connection that is not saved.
 - **Telnet:** a connection of type Telnet opens as a terminal tab or pane, with split panes and broadcast like SSH. Telnet is not encrypted and has no passwords of its own, so RemoteDeck saves nothing for it: you type the login at the remote prompt. Meant for switches, routers and other devices on a network you trust. It answers the server's negotiation (the server echoing, the terminal type, and the window size, which follows the pane when you resize). Options: `term` (terminal type, default `xterm-256color`), `connectTimeoutSeconds` (default 10) and `localEcho` (`true` to show what you type yourself, for raw devices that do not echo; the dialog has a checkbox). The default port is 23. mRemoteNG imports of Telnet connections now open.
+- **AI chat:** a connection of type *AI chat* opens a chat with an Open WebUI or other OpenAI-compatible server (Ollama, LM Studio, OpenAI) in a terminal tab or pane, with split panes and broadcast like any terminal. Enter the server address (for example `http://localhost:3000`) and an API key (in Open WebUI: Settings > Account > API Keys); the key is kept in the encrypted vault, and is optional for local servers. Replies stream in as they are written; Ctrl+C stops one. Commands: `/models`, `/model <name or number>`, `/system <text>`, `/clear`, `/help`, `/exit`. Options: `server` (`openwebui`, the default, or `openai`), `path` (chat endpoint override), `model`, `system` and `acceptUntrustedCertificate`. GitHub Copilot is not supported: it has no public chat API to connect to.
 - **Serial port:** a connection of type *Serial port (COM)* opens a COM port as a terminal tab or pane, for switch and router console cables, Arduinos and other devices. The host is the port name (for example `COM3`; the dialog lists the ports it finds). Options: `baud` (default 9600), `format` (data bits, parity and stop bits, default `8N1`), `flow` (`none`, `xonxoff` or `rtscts`) and `translateLf` (`false` to show line feeds as they are; by default each bare line feed from the device also returns to the left edge, so output does not stair-step). Nothing is saved except these settings. A port can only be open in one program at a time, so close other serial programs first. If the device is unplugged the tab says the connection closed.
 - **Organizing connections:** drag a connection or folder in the left panel onto a folder to move it there. Dropping onto a connection puts the item in that connection's folder, and dropping on the empty space below the list moves it to the top level. A folder cannot be dropped into itself or one of its own subfolders. Dragging is off while a search is active. Alphabetical order is kept, so there is no manual ordering within a folder.
 - **Git terminal:** a connection of type *Git terminal (local folder)* opens a shell on this computer in a repository folder, as a tab or split pane like any other terminal. The host is the folder. Options: `shell` (`auto` by default, which prefers Git Bash, then PowerShell 7, Windows PowerShell and cmd; or `bash`, `pwsh`, `powershell`, `cmd`, or the full path of a program) and `startup` (a one-line command typed for you when the terminal opens, for example `git status`). Needs Windows 10 version 1809 or newer. Nothing is saved except the folder and these options.
@@ -240,16 +243,15 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, AI chat, CI.
 
 Next, in this order:
 
 1. A MobaXterm importer (needs a sample export)
-2. An AI chat connection type you can save like any other: point it at Open WebUI (or another OpenAI-compatible endpoint) or Copilot and chat in a terminal pane
-3. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
-4. Clipboard clearing
-5. VNC
-6. Cleanup: newer GitHub Actions versions and a test that blocks on a task
+2. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+3. Clipboard clearing
+4. VNC
+5. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 

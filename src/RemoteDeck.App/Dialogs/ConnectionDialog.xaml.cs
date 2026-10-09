@@ -5,6 +5,7 @@ using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Plugin;
 using RemoteDeck.Core.Launchers;
+using RemoteDeck.Protocols.Ai;
 using RemoteDeck.Protocols.Git;
 using RemoteDeck.Protocols.Serial;
 
@@ -78,6 +79,11 @@ public partial class ConnectionDialog : Window
             GitShellBox.SelectedIndex = 0;
         }
 
+        if (AiServerBox.SelectedItem is null)
+        {
+            AiServerBox.SelectedIndex = 0;
+        }
+
         if (EditorBox.SelectedItem is null)
         {
             EditorBox.SelectedIndex = 0;
@@ -99,6 +105,10 @@ public partial class ConnectionDialog : Window
             TranslateBox.IsChecked = !string.Equals(Option(existing, "translateLf"), "false", StringComparison.OrdinalIgnoreCase);
             GitShellBox.SelectedItem = GitShellBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "shell").ToLowerInvariant()) ?? GitShellBox.Items[0];
             StartupBox.Text = Option(existing, "startup");
+            AiServerBox.SelectedItem = AiServerBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "server").ToLowerInvariant()) ?? AiServerBox.Items[0];
+            AiModelBox.Text = Option(existing, "model");
+            AiSystemBox.Text = Option(existing, "system");
+            AiCertBox.IsChecked = string.Equals(Option(existing, "acceptUntrustedCertificate"), "true", StringComparison.OrdinalIgnoreCase);
             EditorBox.SelectedItem = EditorBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "editor").ToLowerInvariant()) ?? EditorBox.Items[0];
             ProgramBox.Text = Option(existing, "program");
             EditorArgsBox.Text = Option(existing, "arguments");
@@ -111,6 +121,7 @@ public partial class ConnectionDialog : Window
             if (existing.CredentialId is not null)
             {
                 PasswordLabel.Text = "Password (leave empty to keep the saved one)";
+                AiKeyLabel.Text = "API key (leave empty to keep the saved one)";
             }
         }
 
@@ -138,20 +149,23 @@ public partial class ConnectionDialog : Window
 
     private bool IsGit => SelectedType == "git";
 
+    private bool IsAi => SelectedType == "ai";
+
     private bool IsEditor => SelectedType == "editor";
 
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || AiPanel is null || AiKeyLabel is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
         {
             return;
         }
 
-        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? Visibility.Collapsed : Visibility.Visible;
+        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial || IsGit || IsEditor || IsAi ? Visibility.Collapsed : Visibility.Visible;
         SerialPanel.Visibility = IsSerial ? Visibility.Visible : Visibility.Collapsed;
         GitPanel.Visibility = IsGit ? Visibility.Visible : Visibility.Collapsed;
+        AiPanel.Visibility = IsAi ? Visibility.Visible : Visibility.Collapsed;
         EditorPanel.Visibility = IsEditor ? Visibility.Visible : Visibility.Collapsed;
         PortBox.IsEnabled = !IsSerial && !IsGit && !IsEditor;
         if (IsEditor)
@@ -171,11 +185,11 @@ public partial class ConnectionDialog : Window
 
         // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
         SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
-        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : IsEditor ? "Folder or file to open" : "Host";
+        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : IsEditor ? "Folder or file to open" : IsAi ? "Server address (for example http://localhost:3000)" : "Host";
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
-        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsTelnet ? "Leave empty for 23" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
+        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsTelnet ? "Leave empty for 23" : IsAi ? "Leave empty to use the address as typed" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -350,11 +364,38 @@ public partial class ConnectionDialog : Window
             options.Remove("forwards");
         }
 
+        if (IsAi)
+        {
+            if (!AiConnectionFactory.TryValidate(host, port, out var aiError))
+            {
+                Warn(aiError);
+                return;
+            }
+
+            foreach (var (aiKey, aiValue) in new[]
+            {
+                ("server", (AiServerBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "openwebui"),
+                ("model", AiModelBox.Text.Trim()),
+                ("system", AiSystemBox.Text.Trim()),
+                ("acceptUntrustedCertificate", AiCertBox.IsChecked == true ? "true" : string.Empty)
+            })
+            {
+                if (aiValue.Length > 0)
+                {
+                    options[aiKey] = aiValue;
+                }
+                else
+                {
+                    options.Remove(aiKey);
+                }
+            }
+        }
+
         if (IsWeb && CertBox.IsChecked == true)
         {
             options["acceptUntrustedCertificate"] = "true";
         }
-        else
+        else if (!IsAi)
         {
             options.Remove("acceptUntrustedCertificate");
         }
@@ -540,7 +581,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp || IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? string.Empty : PasswordBox.Password;
+        Password = IsAi ? AiKeyBox.Password : IsRdp || IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 
