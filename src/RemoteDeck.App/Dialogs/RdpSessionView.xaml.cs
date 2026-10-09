@@ -27,16 +27,45 @@ public partial class RdpSessionView : UserControl, IDisposable
     /// <summary>True when the Windows Remote Desktop control is installed.</summary>
     internal static bool IsAvailable => RdpAxHost.FindClsid() is not null;
 
+    /// <summary>The native window that holds the control (the one that has to be raised), or zero before it exists. Used to keep it on top of a pane's terminal page.</summary>
+    internal IntPtr Handle => Host.Handle;
+
+    /// <summary>Raised once the control's window exists, so the owner can raise it above the pane behind it.</summary>
+    internal event Action? HandleReady;
+
+    /// <summary>Raised whenever the status text changes. A pane uses it, because its own bar is hidden behind the terminal page.</summary>
+    internal event Action<string>? StatusChanged;
+
+    /// <summary>Hides the status bar; a pane shows the status in its header instead.</summary>
+    internal bool BarHidden
+    {
+        set => BarBorder.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void ShowStatus(string text)
+    {
+        StatusText.Text = text;
+        StatusChanged?.Invoke(text);
+    }
+
     internal RdpSessionView(RdpInfo info, string password)
     {
         InitializeComponent();
         _info = info;
         _password = password;
-        StatusText.Text = $"Connecting to {info.Host}...";
+        ShowStatus($"Connecting to {info.Host}...");
 
         _poll.Tick += (_, _) => Poll();
         _resize.Tick += (_, _) => ApplyResize();
         Loaded += (_, _) => Start();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible)
+            {
+                Start();
+                HandleReady?.Invoke();
+            }
+        };
     }
 
     private void Start()
@@ -50,7 +79,7 @@ public partial class RdpSessionView : UserControl, IDisposable
         var clsid = RdpAxHost.FindClsid();
         if (clsid is null)
         {
-            StatusText.Text = "The Windows Remote Desktop control is not available on this computer.";
+            ShowStatus("The Windows Remote Desktop control is not available on this computer.");
             ActionButton.Visibility = Visibility.Collapsed;
             return;
         }
@@ -58,7 +87,11 @@ public partial class RdpSessionView : UserControl, IDisposable
         try
         {
             _ax = new RdpAxHost(clsid);
-            _ax.HandleCreated += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, Connect);
+            _ax.HandleCreated += (_, _) =>
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, Connect);
+                HandleReady?.Invoke();
+            };
             _ax.SizeChanged += (_, _) =>
             {
                 _resize.Stop();
@@ -68,7 +101,7 @@ public partial class RdpSessionView : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Remote Desktop could not start: " + ex.Message;
+            ShowStatus("Remote Desktop could not start: " + ex.Message);
             ActionButton.Visibility = Visibility.Collapsed;
         }
     }
@@ -126,7 +159,7 @@ public partial class RdpSessionView : UserControl, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Remote Desktop could not connect: " + ex.Message;
+            ShowStatus("Remote Desktop could not connect: " + ex.Message);
             ActionButton.Content = "Reconnect";
             return;
         }
@@ -134,7 +167,7 @@ public partial class RdpSessionView : UserControl, IDisposable
         _sawActive = false;
         _polls = 0;
         ActionButton.Content = "Disconnect";
-        StatusText.Text = $"Connecting to {_info.Host}...";
+        ShowStatus($"Connecting to {_info.Host}...");
         _poll.Start();
     }
 
@@ -208,23 +241,23 @@ public partial class RdpSessionView : UserControl, IDisposable
         if (state == 1)
         {
             _sawActive = true;
-            StatusText.Text = $"Connected to {_info.Host}";
+            ShowStatus($"Connected to {_info.Host}");
             return;
         }
 
         if (state == 2)
         {
             _sawActive = true;
-            StatusText.Text = $"Connecting to {_info.Host}...";
+            ShowStatus($"Connecting to {_info.Host}...");
             return;
         }
 
         if (_sawActive || _polls > 6)
         {
             _poll.Stop();
-            StatusText.Text = _sawActive
+            ShowStatus(_sawActive
                 ? "Disconnected. Use Reconnect to sign in again."
-                : "Could not connect. Check the address and sign-in, and that Remote Desktop is turned on for that computer.";
+                : "Could not connect. Check the address and sign-in, and that Remote Desktop is turned on for that computer.");
             ActionButton.Content = "Reconnect";
         }
     }

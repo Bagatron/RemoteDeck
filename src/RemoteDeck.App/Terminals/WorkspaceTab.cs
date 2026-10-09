@@ -49,7 +49,10 @@ public sealed class PaneSession
     /// <summary>For an editor pane: the folder of notes it shows.</summary>
     public string? NotesFolder { get; set; }
 
-    public bool IsEmpty => Connection is null && WebPage is null && Editor is null;
+    /// <summary>Set when this pane shows a Remote Desktop session; the session view is owned by the window.</summary>
+    public RdpInfo? Rdp { get; set; }
+
+    public bool IsEmpty => Connection is null && WebPage is null && Editor is null && Rdp is null;
 
     /// <summary>Runs <paramref name="job"/> after everything queued before it for this pane.</summary>
     public void Enqueue(Func<Task> job)
@@ -395,8 +398,8 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
                 ["title"] = session.Title ?? string.Empty,
                 ["state"] = session.State.ToString(),
                 ["empty"] = session.IsEmpty,
-                ["web"] = session.WebPage is not null || session.Editor is not null,
-                ["editor"] = session.Editor is not null,
+                ["web"] = session.WebPage is not null || session.Editor is not null || session.Rdp is not null,
+                ["editor"] = session.Editor is not null || session.Rdp is not null,
                 ["back"] = session.WebCanGoBack,
                 ["fwd"] = session.WebCanGoForward,
                 ["member"] = members.Contains(session.TerminalId),

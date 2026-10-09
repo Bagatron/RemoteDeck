@@ -149,6 +149,7 @@ public partial class MainWindow : Window
 
     /// <summary>Browsers for web pages inside terminal panes, by the pane's terminal id.</summary>
     private readonly Dictionary<string, WebPageView> _paneWebs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RdpOverlay> _paneRdp = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NotesOverlay> _paneNotes = new(StringComparer.Ordinal);
 
     private string? _boundsTab;
@@ -420,7 +421,7 @@ public partial class MainWindow : Window
             var session = sessions[pane.Id];
             if (string.Equals(entry!.Type, "rdp", StringComparison.OrdinalIgnoreCase))
             {
-                OpenRemoteDesktop(entry);
+                OpenRemoteDesktop(entry, tab, session);
                 continue;
             }
 
@@ -1541,7 +1542,16 @@ public partial class MainWindow : Window
 
         if (string.Equals(entry.Type, "rdp", StringComparison.OrdinalIgnoreCase))
         {
-            OpenRemoteDesktop(entry);
+            // In a layout with several panes, a remote desktop takes an empty one like a terminal does.
+            if (!newTab && Current is { Sessions.Count: > 1 } rdpLayout && rdpLayout.PickEmptyPane() is { } rdpPane)
+            {
+                OpenRemoteDesktop(entry, rdpLayout, rdpPane);
+            }
+            else
+            {
+                OpenRemoteDesktop(entry);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -1762,6 +1772,12 @@ public partial class MainWindow : Window
             notesOverlay.Shutdown();
         }
 
+        session.Rdp = null;
+        if (_paneRdp.Remove(session.TerminalId, out var rdpOverlay))
+        {
+            rdpOverlay.Shutdown();
+        }
+
         session.WebPage = null;
         session.WebCanGoBack = false;
         session.WebCanGoForward = false;
@@ -1790,6 +1806,11 @@ public partial class MainWindow : Window
             }
         }
 
+        foreach (var (terminalId, rdp) in _paneRdp)
+        {
+            PlaceWindow(terminalId, rdp.Place, rdp.HideOverlay);
+        }
+
         foreach (var (terminalId, overlay) in _paneNotes)
         {
             PlaceEditor(overlay, terminalId);
@@ -1797,7 +1818,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Moves a pane's editor window over the pane, or hides it when the pane is not on screen.</summary>
-    private void PlaceEditor(NotesOverlay overlay, string terminalId)
+    private void PlaceEditor(NotesOverlay overlay, string terminalId) => PlaceWindow(terminalId, overlay.Place, overlay.HideOverlay);
+
+    /// <summary>Moves a window that stands in for a pane's content over the pane, or hides it when the pane is not on screen.</summary>
+    private void PlaceWindow(string terminalId, Action<double, double, double, double> place, Action hide)
     {
         var current = Current;
         if (current is not null
@@ -1813,11 +1837,11 @@ public partial class MainWindow : Window
             var toDips = target.TransformFromDevice;
             var topLeft = toDips.Transform(PaneWebHost.PointToScreen(new Point(rect.X, rect.Y)));
             var bottomRight = toDips.Transform(PaneWebHost.PointToScreen(new Point(rect.Right, rect.Bottom)));
-            overlay.Place(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
+            place(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
         }
         else
         {
-            overlay.HideOverlay();
+            hide();
         }
     }
 
@@ -1871,7 +1895,7 @@ public partial class MainWindow : Window
     /// Opens a saved Remote Desktop connection in a tab, asking for the password (which is not saved). Falls back to the
     /// Windows Remote Desktop app when the connection is set to use it or the embedded control is not available.
     /// </summary>
-    private void OpenRemoteDesktop(ConnectionEntry entry)
+    private void OpenRemoteDesktop(ConnectionEntry entry, WorkspaceTab? intoTab = null, PaneSession? intoPane = null)
     {
         var external = entry.Options is not null
             && entry.Options.TryGetValue("externalClient", out var flag)
@@ -1913,6 +1937,27 @@ public partial class MainWindow : Window
         }
 
         var info = new RdpInfo(entry.Name, entry.Host, entry.Port ?? 3389, user.Length > 0 ? user : null, domain);
+        if (intoTab is not null && intoPane is not null)
+        {
+            // One pane of a split layout: the session sits over the pane, like a web page or the editor does.
+            var paneView = new RdpSessionView(info, password) { BarHidden = true };
+            paneView.StatusChanged += text =>
+            {
+                intoPane.Title = $"{entry.Name} - {text}";
+                SyncTab(intoTab);
+            };
+            var overlay = new RdpOverlay(paneView, this);
+            intoPane.Rdp = info;
+            intoPane.ConnectionId = entry.Id;
+            intoPane.Title = entry.Name;
+            intoPane.State = ConnectionState.Connected;
+            _paneRdp[intoPane.TerminalId] = overlay;
+            SyncTab(intoTab);
+            LayoutPaneWebs();
+            SetStatus($"Opened {entry.Name} in a pane.");
+            return;
+        }
+
         var tab = new WorkspaceTab(info);
         var view = new RdpSessionView(info, password) { Visibility = Visibility.Collapsed };
         _webViews[tab.Id] = view;
