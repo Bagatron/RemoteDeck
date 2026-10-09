@@ -125,6 +125,11 @@ public partial class ConnectionDialog : Window
             }
         }
 
+        // Open the tucked-away sections when the saved connection already uses them, so nothing is hidden by surprise.
+        KeyExpander.IsExpanded = KeyBox.Text.Length > 0 || AgentBox.IsChecked == true;
+        AdvancedExpander.IsExpanded = ForwardsBox.Text.Length > 0 || ReconnectBox.IsChecked == true || LogBox.IsChecked == true
+            || (existing is not null && !string.IsNullOrEmpty(Option(existing, "proxyJump")));
+
         Loaded += (_, _) => (existing is null ? NameBox : PasswordBox as UIElement).Focus();
     }
 
