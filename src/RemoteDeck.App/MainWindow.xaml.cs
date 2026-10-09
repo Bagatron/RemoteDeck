@@ -70,6 +70,7 @@ public partial class MainWindow : Window
         _terminals.Focused += OnTerminalFocused;
         _terminals.RatioChanged += OnRatioChanged;
         _terminals.PaneAction += OnPaneAction;
+        _terminals.PaneSwap += SwapPanes;
         _terminals.PaneBounds += OnPaneBounds;
 
         RefreshTree();
@@ -2144,6 +2145,21 @@ public partial class MainWindow : Window
     {
         EndSession(tab, session);
         session.Stop();
+    }
+
+    /// <summary>Swaps two panes of a tab after one was dragged onto the other.</summary>
+    private void SwapPanes(string fromTerminalId, string toTerminalId)
+    {
+        var (tab, _) = Find(fromTerminalId);
+        var (other, _) = Find(toTerminalId);
+        if (tab is null || !ReferenceEquals(tab, other) || !tab.Swap(fromTerminalId, toTerminalId))
+        {
+            return;
+        }
+
+        SyncTab(tab);
+        LayoutPaneWebs();
+        SetStatus("Swapped two panes.");
     }
 
     private void OnPaneAction(string terminalId, string action)

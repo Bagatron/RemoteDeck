@@ -255,6 +255,23 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
         return session;
     }
 
+    /// <summary>
+    /// Swaps what two panes show: each session moves to the other's place in the layout (sizes stay where they are).
+    /// Returns false when either pane is not in this tab or both are the same.
+    /// </summary>
+    public bool Swap(string terminalIdA, string terminalIdB)
+    {
+        var a = PaneIdOf(terminalIdA);
+        var b = PaneIdOf(terminalIdB);
+        if (a is null || b is null || a == b)
+        {
+            return false;
+        }
+
+        (_panes[a], _panes[b]) = (_panes[b], _panes[a]);
+        return true;
+    }
+
     /// <summary>Removes a pane from the layout. Not for the last pane; close the tab instead. Returns the removed session.</summary>
     public PaneSession? RemovePane(string terminalId)
     {

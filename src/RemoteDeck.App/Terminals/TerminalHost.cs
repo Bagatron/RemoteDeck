@@ -42,6 +42,9 @@ public sealed class TerminalHost
     /// <summary>A pane header button was pressed: terminal id and the action ("member", "splitRight", "splitDown", "close").</summary>
     public event Action<string, string>? PaneAction;
 
+    /// <summary>The user dragged a pane (first id) onto another pane (second id) to swap them.</summary>
+    public event Action<string, string>? PaneSwap;
+
     /// <summary>Where each visible pane's body is, in device-independent pixels from the top left of the terminal page: tab id, then terminal id to rectangle.</summary>
     public event Action<string, IReadOnlyDictionary<string, System.Windows.Rect>>? PaneBounds;
 
@@ -237,6 +240,10 @@ public sealed class TerminalHost
 
             case "action":
                 PaneAction?.Invoke(Id(root), root.GetProperty("a").GetString()!);
+                break;
+
+            case "swap":
+                PaneSwap?.Invoke(root.GetProperty("from").GetString()!, root.GetProperty("to").GetString()!);
                 break;
         }
     }

@@ -145,6 +145,8 @@ The first start asks you to create a master password; after that it asks for it 
 - **Serial port:** a connection of type *Serial port (COM)* opens a COM port as a terminal tab or pane, for switch and router console cables, Arduinos and other devices. The host is the port name (for example `COM3`; the dialog lists the ports it finds). Options: `baud` (default 9600), `format` (data bits, parity and stop bits, default `8N1`), `flow` (`none`, `xonxoff` or `rtscts`) and `translateLf` (`false` to show line feeds as they are; by default each bare line feed from the device also returns to the left edge, so output does not stair-step). Nothing is saved except these settings. A port can only be open in one program at a time, so close other serial programs first. If the device is unplugged the tab says the connection closed.
 - **Organizing connections:** drag a connection or folder in the left panel onto a folder to move it there. Dropping onto a connection puts the item in that connection's folder, and dropping on the empty space below the list moves it to the top level. A folder cannot be dropped into itself or one of its own subfolders. Dragging is off while a search is active. Alphabetical order is kept, so there is no manual ordering within a folder.
 - **Git terminal:** a connection of type *Git terminal (local folder)* opens a shell on this computer in a repository folder, as a tab or split pane like any other terminal. The host is the folder. Options: `shell` (`auto` by default, which prefers Git Bash, then PowerShell 7, Windows PowerShell and cmd; or `bash`, `pwsh`, `powershell`, `cmd`, or the full path of a program) and `startup` (a one-line command typed for you when the terminal opens, for example `git status`). Needs Windows 10 version 1809 or newer. Nothing is saved except the folder and these options.
+**Moving panes:** in a split layout, drag a pane by its header onto another pane to swap the two. The sessions keep running; only their places change, and a saved workspace remembers the new arrangement. Dropping on the header works for every kind of pane (terminals, web pages and the editor).
+
 **Themes:** besides Nord and Dracula, four themes match the logo: Eagle Midnight, Eagle Cyan, Eagle Steel and Eagle Light. Folders in the connections tree stay open or closed the way you left them, also after you move things around.
 
 **Sidebar views:** the two buttons at the top of the sidebar switch between *Connections* (your saved connections and folders) and *Workspaces* (your saved workspaces: double-click or press Enter to open one, right-click for Delete, and *Save current tab...* saves the tab you are on). When you save, the name box lists the workspaces that already exist and filters as you type; pick one to replace it. The window title shows the version, for example `RemoteDeck v0.5.0`. To use your own app icon, save a multi-size `.ico` as `src/RemoteDeck.App/Assets/RemoteDeck.ico` and rebuild.
@@ -243,12 +245,11 @@ Done: encrypted vault, jump hosts, port forwards, saved connections, SSH termina
 Next, in this order:
 
 1. A MobaXterm importer (needs a sample export)
-2. Movable session tiles: drag a pane to another spot in the layout, or swap two panes
-3. An AI chat connection type you can save like any other: point it at Open WebUI (or another OpenAI-compatible endpoint) or Copilot and chat in a terminal pane
-4. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
-5. Clipboard clearing
-6. VNC
-7. Cleanup: newer GitHub Actions versions and a test that blocks on a task
+2. An AI chat connection type you can save like any other: point it at Open WebUI (or another OpenAI-compatible endpoint) or Copilot and chat in a terminal pane
+3. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+4. Clipboard clearing
+5. VNC
+6. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 

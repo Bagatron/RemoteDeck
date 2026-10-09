@@ -45,6 +45,11 @@
   .hdr button { display: flex; align-items: center; background: none; border: 0; color: var(--dim);
                 padding: 4px; border-radius: calc(var(--radius) * 0.4); cursor: pointer; }
   .hdr button:hover { color: var(--text); background: var(--alt); }
+  .hdr { cursor: grab; }
+  .hdr button { cursor: pointer; }
+  /* Dragging a pane by its header onto another pane swaps the two. */
+  .pane.dragging { opacity: .55; }
+  .pane.dropTarget { outline: 2px dashed var(--accent); outline-offset: -3px; }
   .pane.empty [data-a="member"] { display: none; }
   .pane.member [data-a="member"] { color: var(--warning); }
   .pane.live [data-a="member"] { color: var(--broadcast); }
@@ -128,6 +133,11 @@
   const tabs = new Map();   // tab id -> { el, key, ids: Set, focused }
   const panes = new Map();  // terminal id -> pane record
   let activeTab = null;
+  let dragFrom = null;      // the pane being dragged by its header, if any
+
+  function clearDropMarks() {
+    for (const p of panes.values()) p.el.classList.remove("dragging", "dropTarget");
+  }
 
   const post = (message) => window.chrome.webview.postMessage(message);
 
@@ -262,6 +272,33 @@
       if (!button || button.disabled) return;
       if (button.dataset.a === "find") openFind(id);
       else post({ t: "action", id, a: button.dataset.a });
+    });
+    // Drag a pane by its header onto another pane to swap them (the page only reports it; the host does the swap).
+    const header = el.querySelector(".hdr");
+    header.draggable = true;
+    header.addEventListener("dragstart", (e) => {
+      dragFrom = id;
+      e.dataTransfer.setData("text/plain", id);
+      e.dataTransfer.effectAllowed = "move";
+      el.classList.add("dragging");
+    });
+    header.addEventListener("dragend", () => { dragFrom = null; clearDropMarks(); });
+    el.addEventListener("dragover", (e) => {
+      if (!dragFrom || dragFrom === id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      el.classList.add("dropTarget");
+    });
+    el.addEventListener("dragleave", (e) => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove("dropTarget");
+    });
+    el.addEventListener("drop", (e) => {
+      if (!dragFrom || dragFrom === id) return;
+      e.preventDefault();
+      const from = dragFrom;
+      dragFrom = null;
+      clearDropMarks();
+      post({ t: "swap", from, to: id });
     });
     wireFind(id, el, term, search);
     el.addEventListener("mousedown", () => setFocus(id));
