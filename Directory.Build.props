@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
-    <Version Condition="'$(Version)' == ''">0.6.1</Version>
+    <Version Condition="'$(Version)' == ''">0.8.0</Version>
     <Authors>RemoteDeck contributors</Authors>
     <Copyright>Copyright (c) 2026 RemoteDeck contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
