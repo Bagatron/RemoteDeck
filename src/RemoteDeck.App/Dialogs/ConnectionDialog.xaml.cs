@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Plugin;
+using RemoteDeck.Core.Launchers;
 using RemoteDeck.Protocols.Git;
 using RemoteDeck.Protocols.Serial;
 
@@ -77,6 +78,11 @@ public partial class ConnectionDialog : Window
             GitShellBox.SelectedIndex = 0;
         }
 
+        if (EditorBox.SelectedItem is null)
+        {
+            EditorBox.SelectedIndex = 0;
+        }
+
         if (existing is not null)
         {
             NameBox.Text = existing.Name;
@@ -93,6 +99,9 @@ public partial class ConnectionDialog : Window
             TranslateBox.IsChecked = !string.Equals(Option(existing, "translateLf"), "false", StringComparison.OrdinalIgnoreCase);
             GitShellBox.SelectedItem = GitShellBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "shell").ToLowerInvariant()) ?? GitShellBox.Items[0];
             StartupBox.Text = Option(existing, "startup");
+            EditorBox.SelectedItem = EditorBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == Option(existing, "editor").ToLowerInvariant()) ?? EditorBox.Items[0];
+            ProgramBox.Text = Option(existing, "program");
+            EditorArgsBox.Text = Option(existing, "arguments");
             LocalEchoBox.IsChecked = string.Equals(Option(existing, "localEcho"), "true", StringComparison.OrdinalIgnoreCase);
             ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
@@ -129,19 +138,26 @@ public partial class ConnectionDialog : Window
 
     private bool IsGit => SelectedType == "git";
 
+    private bool IsEditor => SelectedType == "editor";
+
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
         {
             return;
         }
 
-        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial || IsGit ? Visibility.Collapsed : Visibility.Visible;
+        LoginPanel.Visibility = IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? Visibility.Collapsed : Visibility.Visible;
         SerialPanel.Visibility = IsSerial ? Visibility.Visible : Visibility.Collapsed;
         GitPanel.Visibility = IsGit ? Visibility.Visible : Visibility.Collapsed;
-        PortBox.IsEnabled = !IsSerial && !IsGit;
+        EditorPanel.Visibility = IsEditor ? Visibility.Visible : Visibility.Collapsed;
+        PortBox.IsEnabled = !IsSerial && !IsGit && !IsEditor;
+        if (IsEditor)
+        {
+            UpdateEditorHint();
+        }
         if (IsSerial)
         {
             var ports = SerialConnectionFactory.AvailablePorts();
@@ -155,7 +171,7 @@ public partial class ConnectionDialog : Window
 
         // Remote Desktop asks for the password each time and never keeps one, so there is nothing to enter here.
         SecretPanel.Visibility = IsRdp ? Visibility.Collapsed : Visibility.Visible;
-        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : "Host";
+        HostLabel.Text = IsWeb ? "Address (for example pve.lan, or https://pve.lan:8006)" : IsSerial ? "Serial port (for example COM3)" : IsGit ? "Repository folder (for example C:\\Projects\\RemoteDeck)" : IsEditor ? "Folder or file to open" : "Host";
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
@@ -176,6 +192,56 @@ public partial class ConnectionDialog : Window
         {
             KeyBox.Text = dialog.FileName;
         }
+    }
+
+    private void BrowseFile_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Choose the file to open" };
+        if (HostBox.Text.Trim() is { Length: > 0 } current && System.IO.Directory.Exists(System.IO.Path.GetDirectoryName(current) ?? string.Empty))
+        {
+            dialog.InitialDirectory = System.IO.Path.GetDirectoryName(current);
+        }
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            HostBox.Text = dialog.FileName;
+            if (NameBox.Text.Trim().Length == 0)
+            {
+                NameBox.Text = System.IO.Path.GetFileName(dialog.FileName);
+            }
+        }
+    }
+
+    private void BrowseProgram_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Choose the program", Filter = "Programs (*.exe;*.cmd;*.bat)|*.exe;*.cmd;*.bat|All files (*.*)|*.*" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            ProgramBox.Text = dialog.FileName;
+        }
+    }
+
+    private void EditorBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CustomEditorPanel is null)
+        {
+            return;
+        }
+
+        var tag = (EditorBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "notepad";
+        CustomEditorPanel.Visibility = tag == "custom" ? Visibility.Visible : Visibility.Collapsed;
+        if (tag == "builtin" && HostBox.Text.Trim().Length == 0)
+        {
+            HostBox.Text = RemoteDeck.Core.Notes.NoteLibrary.DefaultFolder();
+        }
+    }
+
+    private void UpdateEditorHint()
+    {
+        var found = EditorLauncher.ForThisComputer().Installed();
+        EditorsHint.Text = found.Count > 0
+            ? "Found on this computer: " + string.Join(", ", found.Select(EditorLauncher.DisplayName)) + "."
+            : "None of these editors were found. Use \"Other program\" to pick one.";
     }
 
     private void BrowseFolder_Click(object sender, RoutedEventArgs e)
@@ -213,7 +279,7 @@ public partial class ConnectionDialog : Window
         }
 
         int? port = null;
-        if (!IsSerial && !IsGit && PortBox.Text.Trim().Length > 0)
+        if (!IsSerial && !IsGit && !IsEditor && PortBox.Text.Trim().Length > 0)
         {
             if (!int.TryParse(PortBox.Text.Trim(), out var parsed) || parsed is < 1 or > 65535)
             {
@@ -375,6 +441,41 @@ public partial class ConnectionDialog : Window
             }
         }
 
+        if (IsEditor)
+        {
+            var editorChoice = (EditorBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "notepad";
+            var editorOptions = new Dictionary<string, string> { ["editor"] = editorChoice };
+            if (ProgramBox.Text.Trim().Length > 0 && editorChoice == "custom")
+            {
+                editorOptions["program"] = ProgramBox.Text.Trim();
+            }
+
+            if (EditorArgsBox.Text.Trim().Length > 0)
+            {
+                editorOptions["arguments"] = EditorArgsBox.Text.Trim();
+            }
+
+            try
+            {
+                EditorSettings.From(host, editorOptions);
+            }
+            catch (EditorLaunchException ex)
+            {
+                Warn(ex.Message);
+                return;
+            }
+
+            foreach (var editorKey in new[] { "editor", "program", "arguments", "embed" })
+            {
+                options.Remove(editorKey);
+            }
+
+            foreach (var (editorKey, editorValue) in editorOptions)
+            {
+                options[editorKey] = editorValue;
+            }
+        }
+
         if (IsTelnet && LocalEchoBox.IsChecked == true)
         {
             options["localEcho"] = "true";
@@ -439,7 +540,7 @@ public partial class ConnectionDialog : Window
             Favorite = FavoriteBox.IsChecked == true
         };
         // Remote Desktop opens in the Windows client, which asks for the password itself, so none is stored.
-        Password = IsRdp || IsWeb || IsTelnet || IsSerial || IsGit ? string.Empty : PasswordBox.Password;
+        Password = IsRdp || IsWeb || IsTelnet || IsSerial || IsGit || IsEditor ? string.Empty : PasswordBox.Password;
         DialogResult = true;
     }
 

@@ -60,6 +60,7 @@
   .pane.web .xt { visibility: hidden; }
   .pane.web [data-a="find"], .pane.web [data-a="member"] { display: none; }
   .pane:not(.web) [data-w] { display: none; }
+  .pane.ed [data-w] { display: none; }
   .hdr button[data-w] { padding: 4px 7px; font-size: 13px; line-height: 12px; }
   .hdr button:disabled { opacity: .35; cursor: default; background: none; color: var(--dim); }
 
@@ -378,6 +379,7 @@
     pane.dot.className = "dot " + (meta.empty ? "" : meta.state);
     pane.el.classList.toggle("empty", meta.empty);
     pane.el.classList.toggle("web", !!meta.web);
+    pane.el.classList.toggle("ed", !!meta.editor);
     pane.backButton.disabled = !meta.back;
     pane.forwardButton.disabled = !meta.fwd;
     pane.el.classList.toggle("member", meta.member);

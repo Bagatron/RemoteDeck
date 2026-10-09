@@ -13,6 +13,14 @@
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
+  <!-- Put your icon at src/RemoteDeck.App/Assets/RemoteDeck.ico (a multi-size .ico) and it becomes the app, taskbar and window icon. -->
+  <PropertyGroup Condition="Exists('Assets\RemoteDeck.ico')">
+    <ApplicationIcon>Assets\RemoteDeck.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('Assets\RemoteDeck.ico')">
+    <Resource Include="Assets\RemoteDeck.ico" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Windows Forms adds these automatically; they clash with WPF's Application, Brush, Color and so on. -->
     <Using Remove="System.Windows.Forms" />
@@ -22,6 +30,8 @@
   <ItemGroup>
     <!-- Hosts the terminal page (xterm.js). Needs the WebView2 runtime, which ships with Windows 11 and current Edge. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <!-- The text editor control behind the built-in editor tabs (line numbers, syntax colouring, undo, search). -->
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
   </ItemGroup>
 
   <ItemGroup>

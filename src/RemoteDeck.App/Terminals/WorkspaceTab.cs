@@ -43,7 +43,13 @@ public sealed class PaneSession
 
     public bool WebCanGoForward { get; set; }
 
-    public bool IsEmpty => Connection is null && WebPage is null;
+    /// <summary>Set when this pane shows the built-in editor; the editor itself is owned by the window.</summary>
+    public EditorTabInfo? Editor { get; set; }
+
+    /// <summary>For an editor pane: the folder of notes it shows.</summary>
+    public string? NotesFolder { get; set; }
+
+    public bool IsEmpty => Connection is null && WebPage is null && Editor is null;
 
     /// <summary>Runs <paramref name="job"/> after everything queued before it for this pane.</summary>
     public void Enqueue(Func<Task> job)
@@ -78,6 +84,10 @@ public sealed class PaneSession
 public sealed record RdpInfo(string Name, string Host, int Port, string? User, string? Domain);
 
 /// <summary>A saved web connection shown in a tab instead of terminal panes.</summary>
+/// <summary>An editor window shown inside a tab.</summary>
+public sealed record EditorTabInfo(string Name);
+
+/// <summary>A saved web connection shown in a tab instead of terminal panes.</summary>
 public sealed record WebPageInfo(string Name, Uri Address, bool AcceptUntrustedCertificate);
 
 /// <summary>
@@ -110,6 +120,16 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
         Rdp = rdp;
     }
 
+    /// <summary>A tab that holds an editor's window.</summary>
+    public WorkspaceTab(EditorTabInfo editor)
+        : this(LayoutPreset.Single)
+    {
+        Editor = editor;
+    }
+
+    /// <summary>Set for an editor tab; null otherwise.</summary>
+    public EditorTabInfo? Editor { get; }
+
     /// <summary>Set for a web tab; null otherwise.</summary>
     public WebPageInfo? WebPage { get; }
 
@@ -117,7 +137,7 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
     public RdpInfo? Rdp { get; }
 
     /// <summary>True for a tab that shows a web page or a remote desktop instead of terminal panes.</summary>
-    public bool IsEmbedded => WebPage is not null || Rdp is not null;
+    public bool IsEmbedded => WebPage is not null || Rdp is not null || Editor is not null;
 
     /// <summary>The page's own title once it has loaded, shown on a web tab.</summary>
     public string? WebTitle { get; set; }
@@ -155,6 +175,11 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
             if (Rdp is not null)
             {
                 return Rdp.Name;
+            }
+
+            if (Editor is not null)
+            {
+                return Editor.Name;
             }
 
             if (WebPage is not null)
@@ -299,6 +324,7 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
     {
         var layout = _root;
         var members = new List<string>();
+        var noteFolders = new Dictionary<string, string>(StringComparer.Ordinal);
         var inGroup = Router.Members.ToHashSet(StringComparer.Ordinal);
         foreach (var pane in LayoutTree.Panes(_root))
         {
@@ -308,9 +334,16 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
             {
                 members.Add(pane.Id);
             }
+
+            // Notes kept with a workspace come back from that workspace's own folder.
+            if (session.Editor is not null && session.NotesFolder is { } folder && RemoteDeck.Core.Notes.NoteLibrary.IsWorkspaceFolder(folder))
+            {
+                noteFolders[pane.Id] = folder;
+            }
         }
 
-        return new Workspace(name, layout, description, AutoConnect: true, BroadcastMembers: members.Count > 0 ? members : null);
+        return new Workspace(name, layout, description, AutoConnect: true, BroadcastMembers: members.Count > 0 ? members : null,
+            NoteFolders: noteFolders.Count > 0 ? noteFolders : null);
     }
 
     /// <summary>The pane ids and sessions in visual order, so a saved layout can be matched to its panes.</summary>
@@ -345,7 +378,8 @@ public sealed class WorkspaceTab : INotifyPropertyChanged
                 ["title"] = session.Title ?? string.Empty,
                 ["state"] = session.State.ToString(),
                 ["empty"] = session.IsEmpty,
-                ["web"] = session.WebPage is not null,
+                ["web"] = session.WebPage is not null || session.Editor is not null,
+                ["editor"] = session.Editor is not null,
                 ["back"] = session.WebCanGoBack,
                 ["fwd"] = session.WebCanGoForward,
                 ["member"] = members.Contains(session.TerminalId),

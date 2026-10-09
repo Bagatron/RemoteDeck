@@ -13,7 +13,8 @@ public sealed record Workspace(
     LayoutNode Layout,
     string? Description = null,
     bool AutoConnect = false,
-    IReadOnlyList<string>? BroadcastMembers = null);
+    IReadOnlyList<string>? BroadcastMembers = null,
+    IReadOnlyDictionary<string, string>? NoteFolders = null);
 
 /// <summary>JSON reading and writing for layouts and workspaces (camelCase, string enums, "type" discriminator).</summary>
 public static class LayoutSerializer
@@ -87,12 +88,20 @@ public static class LayoutSerializer
 
         LayoutTree.Validate(workspace.Layout);
 
+        var paneIds = LayoutTree.Panes(workspace.Layout).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var paneId in workspace.NoteFolders?.Keys ?? Enumerable.Empty<string>())
+        {
+            if (!paneIds.Contains(paneId))
+            {
+                throw new LayoutException($"Note folder pane '{paneId}' is not a pane in this workspace.");
+            }
+        }
+
         if (workspace.BroadcastMembers is null)
         {
             return;
         }
 
-        var paneIds = LayoutTree.Panes(workspace.Layout).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var member in workspace.BroadcastMembers)
         {
             if (!paneIds.Contains(member))

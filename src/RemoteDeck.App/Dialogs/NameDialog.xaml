@@ -6,7 +6,10 @@
         Background="{StaticResource Back}" Foreground="{StaticResource Text}">
     <StackPanel Margin="18">
         <TextBlock x:Name="Prompt" Margin="0,0,0,6" Foreground="{StaticResource TextDim}" />
-        <TextBox x:Name="NameBox" Padding="6,5" />
+        <TextBox x:Name="NameBox" Padding="6,5" PreviewKeyDown="NameBox_PreviewKeyDown" />
+        <TextBlock x:Name="MatchHint" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource TextDim}" Visibility="Collapsed" />
+        <ListBox x:Name="Existing" Visibility="Collapsed" MaxHeight="150" Margin="0,6,0,0" Background="Transparent"
+                 BorderBrush="{StaticResource Line}" Foreground="{StaticResource Text}" SelectionChanged="Existing_SelectionChanged" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="OK" IsDefault="True" Padding="18,5" Margin="0,0,8,0" Click="Ok_Click" />
             <Button Content="Cancel" IsCancel="True" Padding="18,5" />

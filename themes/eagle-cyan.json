@@ -1,0 +1,55 @@
+{
+  "$schema": "../schemas/theme.schema.json",
+  "name": "Eagle Cyan",
+  "author": "RemoteDeck",
+  "base": "dark",
+  "backdrop": "mica",
+  "colors": {
+    "background": "#06121CEB",
+    "surface": "#0B2233EB",
+    "surfaceAlt": "#123249",
+    "foreground": "#E8F7FF",
+    "mutedForeground": "#7FA3B8",
+    "accent": "#1FC8FF",
+    "accentForeground": "#03121C",
+    "border": "#164563",
+    "success": "#3DE8A8",
+    "warning": "#FFD75E",
+    "danger": "#FF6B81",
+    "broadcast": "#FF9A3D"
+  },
+  "terminal": {
+    "background": "#04101A",
+    "foreground": "#E8F7FF",
+    "cursor": "#1FC8FF",
+    "selection": "#0F4263",
+    "ansi": [
+      "#0B2233",
+      "#FF6B81",
+      "#3DE8A8",
+      "#FFD75E",
+      "#2E8BFF",
+      "#B58CFF",
+      "#1FC8FF",
+      "#D9EEF7",
+      "#35566B",
+      "#FF8FA0",
+      "#6DF2C0",
+      "#FFE488",
+      "#63A9FF",
+      "#CDAAFF",
+      "#6FDDFF",
+      "#FFFFFF"
+    ]
+  },
+  "shape": {
+    "cornerRadius": 10,
+    "borderWidth": 1,
+    "density": "comfortable"
+  },
+  "font": {
+    "ui": "Segoe UI Variable",
+    "mono": "Cascadia Code",
+    "size": 13
+  }
+}

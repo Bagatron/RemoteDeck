@@ -19,6 +19,7 @@
             <ComboBoxItem Content="Telnet (not encrypted)" Tag="telnet" />
             <ComboBoxItem Content="Serial port (COM)" Tag="serial" />
             <ComboBoxItem Content="Git terminal (local folder)" Tag="git" />
+            <ComboBoxItem Content="Editor / IDE (opens a window)" Tag="editor" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
@@ -132,6 +133,34 @@
             <TextBlock Text="Run this when the terminal opens (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
             <TextBox x:Name="StartupBox" Padding="6,5" ToolTip="For example: git status" />
             <TextBlock Text="Opens a terminal on this computer in the repository folder. Nothing is saved except the folder and these choices."
+                       Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
+        <StackPanel x:Name="EditorPanel" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button Content="Choose folder..." Padding="10,4" Click="BrowseFolder_Click" />
+                <Button Content="Choose file..." Padding="10,4" Margin="6,0,0,0" Click="BrowseFile_Click" />
+            </StackPanel>
+            <TextBlock Text="Editor" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <ComboBox x:Name="EditorBox" Padding="6,5" SelectionChanged="EditorBox_SelectionChanged">
+                <ComboBoxItem Content="Notepad" Tag="notepad" />
+                <ComboBoxItem Content="Notepad++" Tag="notepad++" />
+                <ComboBoxItem Content="Sublime Text" Tag="sublime" />
+                <ComboBoxItem Content="Visual Studio Code" Tag="vscode" />
+                <ComboBoxItem Content="Built-in editor (tabs, colors)" Tag="builtin" />
+                <ComboBoxItem Content="Other program..." Tag="custom" />
+            </ComboBox>
+            <TextBlock x:Name="EditorsHint" Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+            <StackPanel x:Name="CustomEditorPanel" Visibility="Collapsed">
+                <TextBlock Text="Program (.exe)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Browse..." Padding="10,4" Margin="6,0,0,0" Click="BrowseProgram_Click" />
+                    <TextBox x:Name="ProgramBox" Padding="6,5" ToolTip="For example a JetBrains IDE: C:\Program Files\JetBrains\...\bin\idea64.exe" />
+                </DockPanel>
+            </StackPanel>
+            <TextBlock Text="Extra arguments (optional)" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <TextBox x:Name="EditorArgsBox" Padding="6,5" ToolTip="Use {target} where the folder or file should go; it is added at the end otherwise. For example: --new-window" />
+            <TextBlock Text="Opens the editor on this computer (the built-in one opens in a tab). Nothing is saved except the path and these choices."
                        Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 

@@ -242,6 +242,10 @@ public class ThemeTests : IDisposable
         Assert.All(files, f => Assert.True(f.Theme is not null, $"{f.Path}: {f.Error}"));
         Assert.Contains(files, f => f.Theme!.Name == "Nord");
         Assert.Contains(files, f => f.Theme!.Name == "Dracula");
+        foreach (var name in new[] { "Eagle Midnight", "Eagle Cyan", "Eagle Steel", "Eagle Light" })
+        {
+            Assert.Contains(files, f => f.Theme!.Name == name);
+        }
     }
 
     [Fact]

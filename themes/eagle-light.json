@@ -1,0 +1,55 @@
+{
+  "$schema": "../schemas/theme.schema.json",
+  "name": "Eagle Light",
+  "author": "RemoteDeck",
+  "base": "light",
+  "backdrop": "none",
+  "colors": {
+    "background": "#F3F7FF",
+    "surface": "#FFFFFF",
+    "surfaceAlt": "#E3ECFB",
+    "foreground": "#0B1B33",
+    "mutedForeground": "#5B6F8F",
+    "accent": "#1566E8",
+    "accentForeground": "#FFFFFF",
+    "border": "#C9D8F2",
+    "success": "#1E9E63",
+    "warning": "#B7791F",
+    "danger": "#D6314F",
+    "broadcast": "#E8590C"
+  },
+  "terminal": {
+    "background": "#FFFFFF",
+    "foreground": "#0B1B33",
+    "cursor": "#1566E8",
+    "selection": "#CFE0FF",
+    "ansi": [
+      "#0B1B33",
+      "#D6314F",
+      "#1E9E63",
+      "#B7791F",
+      "#1566E8",
+      "#7B4FD6",
+      "#0E8FB3",
+      "#C9D3E3",
+      "#5B6F8F",
+      "#E5546F",
+      "#2DB87A",
+      "#D49A2A",
+      "#3D84F5",
+      "#9A72E8",
+      "#27AACC",
+      "#FFFFFF"
+    ]
+  },
+  "shape": {
+    "cornerRadius": 10,
+    "borderWidth": 1,
+    "density": "comfortable"
+  },
+  "font": {
+    "ui": "Segoe UI Variable",
+    "mono": "Cascadia Code",
+    "size": 13
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "../schemas/theme.schema.json",
+  "name": "Eagle Steel",
+  "author": "RemoteDeck",
+  "base": "dark",
+  "backdrop": "none",
+  "colors": {
+    "background": "#1F2D3E",
+    "surface": "#283A50",
+    "surfaceAlt": "#33485F",
+    "foreground": "#EEF3FA",
+    "mutedForeground": "#93A6BD",
+    "accent": "#5AB0FF",
+    "accentForeground": "#0B1A2B",
+    "border": "#3F566F",
+    "success": "#7FD99A",
+    "warning": "#F2CF72",
+    "danger": "#F0758A",
+    "broadcast": "#F5A25D"
+  },
+  "terminal": {
+    "background": "#18242F",
+    "foreground": "#EEF3FA",
+    "cursor": "#5AB0FF",
+    "selection": "#33546F",
+    "ansi": [
+      "#283A50",
+      "#F0758A",
+      "#7FD99A",
+      "#F2CF72",
+      "#5AB0FF",
+      "#B79CF5",
+      "#6FD2E6",
+      "#DCE5F0",
+      "#5B7089",
+      "#F598A8",
+      "#A0E8B4",
+      "#F8DF9A",
+      "#84C5FF",
+      "#CDB8FA",
+      "#97E2F0",
+      "#FFFFFF"
+    ]
+  },
+  "shape": {
+    "cornerRadius": 8,
+    "borderWidth": 1,
+    "density": "comfortable"
+  },
+  "font": {
+    "ui": "Segoe UI Variable",
+    "mono": "Cascadia Code",
+    "size": 13
+  }
+}

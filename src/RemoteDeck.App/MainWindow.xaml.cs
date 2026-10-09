@@ -10,11 +10,15 @@ using RemoteDeck.App.Dialogs;
 using RemoteDeck.App.Services;
 using RemoteDeck.App.Sftp;
 using RemoteDeck.App.Terminals;
+using System.Reflection;
+using RemoteDeck.Core;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Connections;
 using RemoteDeck.Core.Logging;
 using RemoteDeck.Core.Import;
+using RemoteDeck.Core.Launchers;
 using RemoteDeck.Core.Layout;
+using RemoteDeck.Core.Notes;
 using RemoteDeck.Core.Plugins;
 using RemoteDeck.Core.Themes;
 using RemoteDeck.Plugin;
@@ -39,6 +43,16 @@ public partial class MainWindow : Window
     internal MainWindow(AppData data)
     {
         InitializeComponent();
+        Title = ("RemoteDeck " + AppVersion.Label(typeof(MainWindow).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion)).Trim();
+        try
+        {
+            // The same icon the exe carries; set explicitly so the title bar and taskbar always show it.
+            Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/Assets/RemoteDeck.ico", UriKind.Absolute));
+        }
+        catch (Exception ex) when (ex is IOException or UriFormatException or NotSupportedException or InvalidOperationException)
+        {
+            // No icon file in this build; the default icon is used.
+        }
         WindowFit.ToScreen(this, capMaximum: false);
         DataContext = this;
         _data = data;
@@ -91,6 +105,8 @@ public partial class MainWindow : Window
         };
 
         StartAutoLock();
+        LocationChanged += (_, _) => LayoutPaneWebs();
+        StateChanged += (_, _) => LayoutPaneWebs();
 
         Closed += (_, _) =>
         {
@@ -128,6 +144,7 @@ public partial class MainWindow : Window
 
     /// <summary>Browsers for web pages inside terminal panes, by the pane's terminal id.</summary>
     private readonly Dictionary<string, WebPageView> _paneWebs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NotesOverlay> _paneNotes = new(StringComparer.Ordinal);
 
     private string? _boundsTab;
 
@@ -276,7 +293,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dialog = new NameDialog("Save workspace", "Name for this layout and its connections") { Owner = this };
+        var existingNames = Library.LoadAll().Where(f => f.Workspace is not null).Select(f => f.Workspace!.Name).ToList();
+        var dialog = new NameDialog("Save workspace", "Name for this layout and its connections", existing: existingNames) { Owner = this };
         if (dialog.ShowDialog() != true)
         {
             return;
@@ -290,14 +308,44 @@ public partial class MainWindow : Window
 
         try
         {
+            KeepNotesWithWorkspace(tab, dialog.Value);
             var workspace = tab.ToWorkspace(dialog.Value);
             Library.Save(workspace);
             var saved = LayoutTree.Panes(workspace.Layout).Count(p => p.ConnectionId is not null);
             SetStatus($"Saved workspace \"{dialog.Value}\" ({saved} connection(s)).");
+            if (WorkspaceList.Visibility == Visibility.Visible)
+            {
+                RefreshWorkspaces();
+            }
         }
         catch (Exception ex) when (ex is LayoutException or IOException or UnauthorizedAccessException)
         {
             MessageBox.Show(this, ex.Message, "Workspaces", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Notes in the shared notes folder become part of the workspace being saved (they move into its own folder, one per
+    /// pane); notes already kept by another workspace are copied; a folder the user chose is left alone.
+    /// </summary>
+    private void KeepNotesWithWorkspace(WorkspaceTab tab, string workspaceName)
+    {
+        foreach (var (paneId, session) in tab.PanesWithIds())
+        {
+            if (session.Editor is null || !_paneNotes.TryGetValue(session.TerminalId, out var overlay))
+            {
+                continue;
+            }
+
+            var folder = overlay.View.Folder;
+            var shared = NoteLibrary.IsSharedFolder(folder);
+            if (!shared && !NoteLibrary.IsWorkspaceFolder(folder))
+            {
+                continue;
+            }
+
+            overlay.View.MoveTo(System.IO.Path.Combine(NoteLibrary.WorkspaceFolder(workspaceName), NoteLibrary.Slug(paneId)), move: shared);
+            session.NotesFolder = overlay.View.Folder;
         }
     }
 
@@ -335,6 +383,18 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            if (string.Equals(entry.Type, "editor", StringComparison.OrdinalIgnoreCase))
+            {
+                if (BuiltInTarget(entry) is { } builtInTarget)
+                {
+                    // A workspace remembers its own notes folder for the pane.
+                    var notesFolder = workspace.NoteFolders is not null && workspace.NoteFolders.TryGetValue(pane.Id, out var saved) ? saved : builtInTarget;
+                    OpenNotesInPane(tab, session, entry, notesFolder);
+                }
+
+                continue;
+            }
+
             var definition = _data.Store.ResolveDefinition(entry.Id);
             var factory = FactoryFor(entry.Type);
             if (definition is null || factory is null)
@@ -359,70 +419,152 @@ public partial class MainWindow : Window
             : $"Opened \"{workspace.Name}\".");
     }
 
-    private void WorkspacesButton_Click(object sender, RoutedEventArgs e)
+    // ---- the sidebar's Workspaces view ----
+
+    private void ModeConnections_Click(object sender, RoutedEventArgs e) => ShowSidebar(workspaces: false);
+
+    private void ModeWorkspaces_Click(object sender, RoutedEventArgs e) => ShowSidebar(workspaces: true);
+
+    private void ShowSidebar(bool workspaces)
     {
-        var menu = new ContextMenu { PlacementTarget = WorkspacesButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+        ModeConnections.IsChecked = !workspaces;
+        ModeWorkspaces.IsChecked = workspaces;
+        Tree.Visibility = workspaces ? Visibility.Collapsed : Visibility.Visible;
+        ConnectionsTools.Visibility = workspaces ? Visibility.Collapsed : Visibility.Visible;
+        WorkspaceList.Visibility = workspaces ? Visibility.Visible : Visibility.Collapsed;
+        WorkspaceTools.Visibility = workspaces ? Visibility.Visible : Visibility.Collapsed;
+        if (workspaces)
+        {
+            RefreshWorkspaces();
+        }
+    }
+
+    /// <summary>Fills the sidebar's workspace list from the saved workspace files.</summary>
+    private void RefreshWorkspaces()
+    {
         var files = Library.LoadAll();
-
-        foreach (var file in files.Where(f => f.Workspace is not null))
+        WorkspaceList.Items.Clear();
+        foreach (var workspace in files.Where(f => f.Workspace is not null).Select(f => f.Workspace!).OrderBy(w => w.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var workspace = file.Workspace!;
-            var item = new MenuItem { Header = workspace.Name };
-            item.Click += (_, _) => OpenWorkspace(workspace);
-            menu.Items.Add(item);
-        }
-
-        if (files.Count > 0)
-        {
-            menu.Items.Add(new Separator());
-        }
-
-        var save = new MenuItem { Header = "Save current tab as workspace..." };
-        save.Click += (_, _) => SaveWorkspace();
-        menu.Items.Add(save);
-
-        if (files.Any(f => f.Workspace is not null))
-        {
-            var delete = new MenuItem { Header = "Delete a workspace" };
-            foreach (var workspace in files.Where(f => f.Workspace is not null).Select(f => f.Workspace!))
+            var panes = LayoutTree.Panes(workspace.Layout).ToList();
+            var connections = panes.Count(p => p.ConnectionId is not null);
+            var detail = $"{panes.Count} pane(s), {connections} connection(s)" + (string.IsNullOrWhiteSpace(workspace.Description) ? string.Empty : "  ·  " + workspace.Description);
+            WorkspaceList.Items.Add(new ListBoxItem
             {
-                var name = workspace.Name;
-                var entry = new MenuItem { Header = name };
-                entry.Click += (_, _) =>
+                Tag = workspace,
+                Padding = new Thickness(10, 6, 6, 6),
+                ToolTip = workspace.Description,
+                Content = new StackPanel
                 {
-                    if (Confirm($"Delete the workspace \"{name}\"? Your connections are not affected."))
+                    Children =
                     {
-                        Library.Delete(name);
-                    }
-                };
-                delete.Items.Add(entry);
-            }
-
-            menu.Items.Add(delete);
+                        new TextBlock { Text = workspace.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
+                        new TextBlock { Text = detail, FontSize = 11, Foreground = (Brush)FindResource("TextDim"), TextTrimming = TextTrimming.CharacterEllipsis },
+                    },
+                },
+            });
         }
-
-        var folder = new MenuItem { Header = "Open workspaces folder" };
-        folder.Click += (_, _) =>
-        {
-            Directory.CreateDirectory(AppPaths.Workspaces);
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Workspaces}\"") { UseShellExecute = true });
-        };
-        menu.Items.Add(folder);
 
         var broken = files.Where(f => f.Error is not null).ToList();
         if (broken.Count > 0)
         {
-            var problems = new MenuItem { Header = $"Workspace problems ({broken.Count})..." };
-            problems.Click += (_, _) => MessageBox.Show(
+            var problems = new ListBoxItem
+            {
+                Padding = new Thickness(10, 6, 6, 6),
+                Content = new TextBlock { Text = $"{broken.Count} file(s) could not be read - click for details", Foreground = (Brush)FindResource("Warning"), FontSize = 11, TextWrapping = TextWrapping.Wrap },
+            };
+            problems.Selected += (_, _) => MessageBox.Show(
                 this,
                 string.Join("\n\n", broken.Select(b => $"{System.IO.Path.GetFileName(b.Path)}: {b.Error}")),
                 "Workspace problems",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
-            menu.Items.Add(problems);
+            WorkspaceList.Items.Add(problems);
         }
 
-        menu.IsOpen = true;
+        if (WorkspaceList.Items.Count == 0)
+        {
+            WorkspaceList.Items.Add(new ListBoxItem
+            {
+                IsEnabled = false,
+                Padding = new Thickness(10, 10, 6, 6),
+                Content = new TextBlock { Text = "No workspaces yet. Arrange a tab and choose \"Save current tab...\".", TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("TextDim") },
+            });
+        }
+    }
+
+    private Workspace? SelectedWorkspace => (WorkspaceList.SelectedItem as ListBoxItem)?.Tag as Workspace;
+
+    private void SaveWorkspace_Click(object sender, RoutedEventArgs e) => SaveWorkspace();
+
+    private void WorkspaceFolder_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(AppPaths.Workspaces);
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Workspaces}\"") { UseShellExecute = true });
+    }
+
+    private void WorkspaceList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.Tag is Workspace workspace)
+        {
+            OpenWorkspace(workspace);
+        }
+    }
+
+    private void WorkspaceList_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && SelectedWorkspace is { } workspace)
+        {
+            OpenWorkspace(workspace);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete)
+        {
+            WorkspaceDelete_Click(sender, e);
+            e.Handled = true;
+        }
+    }
+
+    private void WorkspaceList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is { } item)
+        {
+            item.IsSelected = true;
+        }
+    }
+
+    private void WorkspaceOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedWorkspace is { } workspace)
+        {
+            OpenWorkspace(workspace);
+        }
+    }
+
+    private void WorkspaceDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedWorkspace is not { } workspace)
+        {
+            return;
+        }
+
+        if (Confirm($"Delete the workspace \"{workspace.Name}\"? Your connections and notes are not affected."))
+        {
+            Library.Delete(workspace.Name);
+            RefreshWorkspaces();
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null && source is not T)
+        {
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return source as T;
     }
 
     // ---- shortcuts and command palette ----
@@ -719,12 +861,17 @@ public partial class MainWindow : Window
         }
 
         var folder = (FolderNode)node;
+        var folderId = folder.Folder.Id;
         var item = new TreeViewItem
         {
             Header = new TextBlock { Text = "\U0001F4C1  " + folder.Folder.Name, FontWeight = FontWeights.SemiBold },
             Tag = folder.Folder,
-            IsExpanded = true,
+
+            // A folder stays the way the user left it, even when the tree is rebuilt after a move or an edit.
+            IsExpanded = !App.Settings.CollapsedFolders.Contains(folderId),
         };
+        item.Expanded += (sender, e) => RememberExpansion(item, e, folderId, expanded: true);
+        item.Collapsed += (sender, e) => RememberExpansion(item, e, folderId, expanded: false);
 
         foreach (var child in folder.Children)
         {
@@ -732,6 +879,27 @@ public partial class MainWindow : Window
         }
 
         return item;
+    }
+
+    /// <summary>Records that the user opened or closed a folder (the events also bubble up from the folders inside it).</summary>
+    private void RememberExpansion(TreeViewItem item, RoutedEventArgs e, string folderId, bool expanded)
+    {
+        if (!ReferenceEquals(e.OriginalSource, item))
+        {
+            return;
+        }
+
+        var collapsed = App.Settings.CollapsedFolders;
+        var changed = expanded ? collapsed.Remove(folderId) : !collapsed.Contains(folderId);
+        if (!expanded && changed)
+        {
+            collapsed.Add(folderId);
+        }
+
+        if (changed)
+        {
+            App.Settings.Save();
+        }
     }
 
     private TreeViewItem MakeConnectionItem(ConnectionEntry entry, string? folderPath)
@@ -751,7 +919,7 @@ public partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         });
 
-        return new TreeViewItem { Header = header, Tag = entry };
+        return new TreeViewItem { Header = header, Tag = entry, ToolTip = (folderPath is { Length: > 0 } ? folderPath + "  ·  " : string.Empty) + entry.Name + "  ·  " + entry.Host };
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshTree();
@@ -1199,12 +1367,28 @@ public partial class MainWindow : Window
             return Task.CompletedTask;
         }
 
+        if (string.Equals(entry.Type, "editor", StringComparison.OrdinalIgnoreCase))
+        {
+            // The built-in editor takes an empty pane of a split layout, like a web page does.
+            if (!newTab && Current is { Sessions.Count: > 1 } layout && layout.PickEmptyPane() is { } emptyPane
+                && BuiltInTarget(entry) is { } builtIn)
+            {
+                OpenNotesInPane(layout, emptyPane, entry, builtIn);
+            }
+            else
+            {
+                LaunchEditor(entry);
+            }
+
+            return Task.CompletedTask;
+        }
+
         var factory = FactoryFor(entry.Type);
         if (factory is null)
         {
             MessageBox.Show(
                 this,
-                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, editors, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
                 "RemoteDeck",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -1244,6 +1428,107 @@ public partial class MainWindow : Window
         _webViews[tab.Id] = view;
         WebHost.Children.Add(view);
         NewTab(tab);
+    }
+
+    /// <summary>Makes the built-in editor for a connection's target: a folder is the notes folder, a file is added as a tab of the default one.</summary>
+    private NotesView? CreateNotesView(string target)
+    {
+        var isFile = File.Exists(target);
+        if (!isFile && !Directory.Exists(target))
+        {
+            try
+            {
+                Directory.CreateDirectory(target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                MessageBox.Show(this, "Could not use that folder: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+        }
+
+        return new NotesView(isFile ? NoteLibrary.DefaultFolder() : target, isFile ? target : null);
+    }
+
+    /// <summary>Opens the built-in editor in a tab of its own.</summary>
+    private void OpenBuiltInEditor(ConnectionEntry entry, string target)
+    {
+        if (CreateNotesView(target) is not { } view)
+        {
+            return;
+        }
+
+        var tab = new WorkspaceTab(new EditorTabInfo(entry.Name));
+        view.Visibility = Visibility.Collapsed;
+        _webViews[tab.Id] = view;
+        WebHost.Children.Add(view);
+        NewTab(tab);
+        SetStatus($"Opened {entry.Name} in a tab.");
+    }
+
+    /// <summary>The target of a saved editor connection when it uses the built-in editor; null otherwise.</summary>
+    private static string? BuiltInTarget(ConnectionEntry entry)
+    {
+        try
+        {
+            var settings = EditorSettings.From(entry.Host, entry.Options);
+            return settings.Editor == "builtin" ? settings.Target : null;
+        }
+        catch (EditorLaunchException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Shows the built-in editor inside a pane of a split layout, next to terminals and web pages.</summary>
+    private void OpenNotesInPane(WorkspaceTab tab, PaneSession pane, ConnectionEntry entry, string target)
+    {
+        if (CreateNotesView(target) is not { } notes)
+        {
+            return;
+        }
+
+        var overlay = new NotesOverlay(notes, this);
+
+        pane.Editor = new EditorTabInfo(entry.Name);
+        pane.ConnectionId = entry.Id;
+        pane.Title = entry.Name;
+        pane.State = ConnectionState.Connected;
+        pane.NotesFolder = notes.Folder;
+        _paneNotes[pane.TerminalId] = overlay;
+
+        SyncTab(tab);
+        LayoutPaneWebs();
+    }
+
+    /// <summary>Opens the folder or file of a saved editor connection in the editor it names, in a window of its own.</summary>
+    private void LaunchEditor(ConnectionEntry entry)
+    {
+        try
+        {
+            var settings = EditorSettings.From(entry.Host, entry.Options);
+            if (settings.Editor == "builtin")
+            {
+                OpenBuiltInEditor(entry, settings.Target);
+                return;
+            }
+
+            var plan = EditorLauncher.ForThisComputer().Plan(settings);
+            Process.Start(new ProcessStartInfo(plan.FileName, plan.Arguments)
+            {
+                WorkingDirectory = plan.WorkingDirectory,
+                UseShellExecute = false,
+            });
+            SetStatus($"Opened {entry.Host} in {plan.Description}.");
+        }
+        catch (EditorLaunchException ex)
+        {
+            MessageBox.Show(this, ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show(this, "Could not start the editor: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     /// <summary>Shows a saved web connection inside a pane of a terminal tab (for example one cell of a 2 x 2 grid).</summary>
@@ -1292,6 +1577,13 @@ public partial class MainWindow : Window
     /// <summary>Removes the browser of a pane that shows a web page.</summary>
     private void ReleaseWeb(PaneSession session)
     {
+        session.Editor = null;
+        session.NotesFolder = null;
+        if (_paneNotes.Remove(session.TerminalId, out var notesOverlay))
+        {
+            notesOverlay.Shutdown();
+        }
+
         session.WebPage = null;
         session.WebCanGoBack = false;
         session.WebCanGoForward = false;
@@ -1309,41 +1601,80 @@ public partial class MainWindow : Window
         LayoutPaneWebs();
     }
 
-    /// <summary>Puts each pane browser over its pane, and hides the ones whose tab is not showing.</summary>
+    /// <summary>Puts each pane browser and editor over its pane, and hides the ones whose tab is not showing.</summary>
     private void LayoutPaneWebs()
     {
-        var current = Current;
         foreach (var (terminalId, view) in _paneWebs)
         {
-            var owner = Find(terminalId).Tab;
-            if (current is not null
-                && ReferenceEquals(owner, current)
-                && _boundsTab == current.Id
-                && _paneBounds.TryGetValue(terminalId, out var rect)
-                && rect.Width >= 40
-                && rect.Height >= 40)
+            if (PlaceOverPane(view, terminalId))
             {
-                Canvas.SetLeft(view, rect.X);
-                Canvas.SetTop(view, rect.Y);
-                view.Width = rect.Width;
-                view.Height = rect.Height;
-                view.Visibility = Visibility.Visible;
-
                 RaiseBrowser(view);
             }
-            else
-            {
-                view.Visibility = Visibility.Collapsed;
-            }
+        }
+
+        foreach (var (terminalId, overlay) in _paneNotes)
+        {
+            PlaceEditor(overlay, terminalId);
         }
     }
 
-    /// <summary>Two native browser windows share a pane's area (the terminal page and the web page); this puts the web page's on top.</summary>
-    private static void RaiseBrowser(WebPageView view)
+    /// <summary>Moves a pane's editor window over the pane, or hides it when the pane is not on screen.</summary>
+    private void PlaceEditor(NotesOverlay overlay, string terminalId)
     {
-        if (view.BrowserHandle != IntPtr.Zero)
+        var current = Current;
+        if (current is not null
+            && WindowState != WindowState.Minimized
+            && IsVisible
+            && ReferenceEquals(Find(terminalId).Tab, current)
+            && _boundsTab == current.Id
+            && _paneBounds.TryGetValue(terminalId, out var rect)
+            && rect.Width >= 40
+            && rect.Height >= 40
+            && PresentationSource.FromVisual(PaneWebHost)?.CompositionTarget is { } target)
         {
-            NativeMethods.SetWindowPos(view.BrowserHandle, NativeMethods.HwndTop, 0, 0, 0, 0, NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoActivate);
+            var toDips = target.TransformFromDevice;
+            var topLeft = toDips.Transform(PaneWebHost.PointToScreen(new Point(rect.X, rect.Y)));
+            var bottomRight = toDips.Transform(PaneWebHost.PointToScreen(new Point(rect.Right, rect.Bottom)));
+            overlay.Place(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
+        }
+        else
+        {
+            overlay.HideOverlay();
+        }
+    }
+
+    /// <summary>Moves a pane's overlay onto the pane's area and shows it; hides it (false) when its pane is not on screen.</summary>
+    private bool PlaceOverPane(FrameworkElement view, string terminalId)
+    {
+        var current = Current;
+        var owner = Find(terminalId).Tab;
+        if (current is not null
+            && ReferenceEquals(owner, current)
+            && _boundsTab == current.Id
+            && _paneBounds.TryGetValue(terminalId, out var rect)
+            && rect.Width >= 40
+            && rect.Height >= 40)
+        {
+            Canvas.SetLeft(view, rect.X);
+            Canvas.SetTop(view, rect.Y);
+            view.Width = rect.Width;
+            view.Height = rect.Height;
+            view.Visibility = Visibility.Visible;
+            return true;
+        }
+
+        view.Visibility = Visibility.Collapsed;
+        return false;
+    }
+
+    /// <summary>Two native browser windows share a pane's area (the terminal page and the web page); this puts the web page's on top.</summary>
+    private static void RaiseBrowser(WebPageView view) => RaiseHandle(view.BrowserHandle);
+
+    private static void RaiseHandle(IntPtr handle)
+    {
+        if (handle != IntPtr.Zero)
+        {
+            NativeMethods.SetWindowPos(handle, NativeMethods.HwndTop, 0, 0, 0, 0, NativeMethods.NoMove | NativeMethods.NoSize | NativeMethods.NoActivate);
         }
     }
 

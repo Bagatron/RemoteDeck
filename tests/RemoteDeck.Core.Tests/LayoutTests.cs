@@ -214,6 +214,18 @@ public class LayoutTests
     }
 
     [Fact]
+    public void Workspace_NoteFoldersRoundTripAndMustNameRealPanes()
+    {
+        var layout = LayoutPresets.Create(LayoutPreset.TwoColumns);
+        var good = new Workspace("Notes", layout, NoteFolders: new Dictionary<string, string> { ["p1"] = @"C:\n\one" });
+        var parsed = LayoutSerializer.DeserializeWorkspace(LayoutSerializer.SerializeWorkspace(good));
+        Assert.Equal(@"C:\n\one", parsed.NoteFolders!["p1"]);
+
+        var bad = new Workspace("Notes", layout, NoteFolders: new Dictionary<string, string> { ["p9"] = "x" });
+        Assert.Throws<LayoutException>(() => LayoutSerializer.SerializeWorkspace(bad));
+    }
+
+    [Fact]
     public void Workspace_BroadcastMemberThatIsNotAPane_Throws()
     {
         var workspace = new Workspace("Bad", LayoutPresets.Create(LayoutPreset.TwoColumns), null, false, new[] { "p9" });

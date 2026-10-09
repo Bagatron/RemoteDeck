@@ -46,6 +46,11 @@
     "description": { "type": "string" },
     "autoConnect": { "type": "boolean", "default": false },
     "layout": { "$ref": "#/$defs/node" },
+    "noteFolders": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Pane id to the folder of notes the built-in editor in that pane shows (kept with the workspace)."
+    },
     "broadcastMembers": {
       "type": "array",
       "uniqueItems": true,

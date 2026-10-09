@@ -41,16 +41,39 @@
         <!-- Saved connections -->
         <DockPanel Grid.Column="0" Background="{StaticResource Panel}">
             <StackPanel DockPanel.Dock="Top" Margin="8,8,8,6">
-                <TextBox x:Name="SearchBox" Padding="6,4" VerticalContentAlignment="Center"
-                         ToolTip="Search your connections" TextChanged="SearchBox_TextChanged" />
-                <Grid Margin="0,6,0,0">
+                <!-- Switches the sidebar between the saved connections and the saved workspaces. -->
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="6" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="+ Connection" Padding="8,4" HorizontalAlignment="Stretch" Click="NewConnection_Click" />
-                    <Button Grid.Column="2" Content="+ Folder" Padding="8,4" HorizontalAlignment="Stretch" Click="NewFolder_Click" />
+                    <ToggleButton x:Name="ModeConnections" Grid.Column="0" Content="Connections" IsChecked="True" Padding="8,5"
+                                  HorizontalAlignment="Stretch" Click="ModeConnections_Click" />
+                    <ToggleButton x:Name="ModeWorkspaces" Grid.Column="2" Content="Workspaces" Padding="8,5"
+                                  HorizontalAlignment="Stretch" Click="ModeWorkspaces_Click" />
+                </Grid>
+                <StackPanel x:Name="ConnectionsTools">
+                    <TextBox x:Name="SearchBox" Padding="6,4" VerticalContentAlignment="Center"
+                             ToolTip="Search your connections" TextChanged="SearchBox_TextChanged" />
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="6" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="+ Connection" Padding="8,4" HorizontalAlignment="Stretch" Click="NewConnection_Click" />
+                        <Button Grid.Column="2" Content="+ Folder" Padding="8,4" HorizontalAlignment="Stretch" Click="NewFolder_Click" />
+                    </Grid>
+                </StackPanel>
+                <Grid x:Name="WorkspaceTools" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Save current tab..." Padding="8,4" HorizontalAlignment="Stretch" Click="SaveWorkspace_Click" />
+                    <Button Grid.Column="2" Content="Folder" Padding="10,4" ToolTip="Open the workspaces folder" Click="WorkspaceFolder_Click" />
                 </Grid>
             </StackPanel>
             <Border DockPanel.Dock="Bottom" Padding="8" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
@@ -68,11 +91,12 @@
                     </Grid.RowDefinitions>
                     <Button x:Name="ThemeButton" Grid.Row="0" Grid.Column="0" Content="Theme  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="ThemeButton_Click" />
                     <Button Grid.Row="0" Grid.Column="2" Content="Import..." Padding="6,4" HorizontalAlignment="Stretch" Click="Import_Click" />
-                    <Button x:Name="WorkspacesButton" Grid.Row="2" Grid.Column="0" Content="Workspaces  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="WorkspacesButton_Click" />
-                    <Button Grid.Row="2" Grid.Column="2" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
+                    <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
                 </Grid>
             </Border>
+            <Grid>
             <TreeView x:Name="Tree" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"
                       PreviewMouseRightButtonDown="Tree_PreviewMouseRightButtonDown"
                       AllowDrop="True" PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown"
@@ -89,6 +113,20 @@
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>
+            <ListBox x:Name="WorkspaceList" Visibility="Collapsed" Background="Transparent" BorderThickness="0"
+                     Foreground="{StaticResource Text}" HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     MouseDoubleClick="WorkspaceList_MouseDoubleClick" KeyDown="WorkspaceList_KeyDown"
+                     PreviewMouseRightButtonDown="WorkspaceList_PreviewMouseRightButtonDown">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Open" Click="WorkspaceOpen_Click" />
+                        <MenuItem Header="Delete" Click="WorkspaceDelete_Click" />
+                        <MenuItem Header="Open workspaces folder" Click="WorkspaceFolder_Click" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+            </ListBox>
+            </Grid>
         </DockPanel>
 
         <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
