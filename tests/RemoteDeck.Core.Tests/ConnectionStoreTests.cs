@@ -205,6 +205,26 @@ public class ConnectionStoreTests
     }
 
     [Fact]
+    public void ContentsOf_ListsEverythingInsideAtAnyDepth()
+    {
+        var store = Store(
+            new FolderEntry("prod", "Prod"),
+            new FolderEntry("web", "Web", "prod"),
+            new FolderEntry("deep", "Deep", "web"),
+            new FolderEntry("other", "Other"));
+        store.AddConnection(Conn("a", folder: "prod"));
+        store.AddConnection(Conn("b", folder: "deep"));
+        store.AddConnection(Conn("c", folder: "other"));
+
+        var (folders, connections) = store.ContentsOf("prod");
+
+        Assert.Equal(new[] { "deep", "web" }, folders.Select(f => f.Id).OrderBy(x => x));
+        Assert.Equal(new[] { "a", "b" }, connections.Select(c => c.Id).OrderBy(x => x));
+        Assert.Empty(store.ContentsOf("other").Folders);
+        Assert.Empty(store.ContentsOf("nope").Connections);
+    }
+
+    [Fact]
     public void RemoveFolder_Unknown_ReturnsFalse()
     {
         Assert.False(new ConnectionStore().RemoveFolder("nope"));

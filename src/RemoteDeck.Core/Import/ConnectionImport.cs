@@ -6,7 +6,7 @@ namespace RemoteDeck.Core.Import;
 public static class ConnectionImport
 {
     public const string FileDialogFilter =
-        "Connection files|config;*.reg;*.rdp;*.rdg;*.xml|OpenSSH config|config|PuTTY export (.reg)|*.reg|Remote Desktop (.rdp)|*.rdp|RDCMan (.rdg)|*.rdg|mRemoteNG (.xml)|*.xml|All files|*.*";
+        "Connection files|config;*.reg;*.rdp;*.rdg;*.xml;*.mxtsessions;*.ini|OpenSSH config|config|PuTTY export (.reg)|*.reg|Remote Desktop (.rdp)|*.rdp|RDCMan (.rdg)|*.rdg|mRemoteNG (.xml)|*.xml|MobaXterm (.mxtsessions or .ini)|*.mxtsessions;*.ini|All files|*.*";
 
     public static ImportResult FromFile(string path, string homeDirectory)
     {
@@ -27,9 +27,11 @@ public static class ConnectionImport
             ".rdp" => RdpFileImporter.Parse(text, Path.GetFileNameWithoutExtension(path)),
             ".rdg" => RdcManImporter.Parse(text),
             ".xml" => MRemoteNgImporter.Parse(text),
+            ".mxtsessions" => MobaXtermImporter.Parse(text),
+            ".ini" when MobaXtermImporter.LooksLikeMobaXterm(text) => MobaXtermImporter.Parse(text),
             _ when file.Equals("config", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".conf", StringComparison.OrdinalIgnoreCase)
                 => SshConfigImporter.Parse(text, homeDirectory),
-            _ => throw new CatalogException("Unrecognised file. Use an OpenSSH config, a PuTTY .reg export, an .rdp, an .rdg or an mRemoteNG .xml."),
+            _ => throw new CatalogException("Unrecognised file. Use an OpenSSH config, a PuTTY .reg export, an .rdp, an .rdg, an mRemoteNG .xml or a MobaXterm .mxtsessions."),
         };
     }
 }

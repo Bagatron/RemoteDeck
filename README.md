@@ -129,7 +129,7 @@ Applied today: interface colors, terminal colors (background, cursor, selection,
 
 ## Importing
 
-`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg` or an mRemoteNG `confCons.xml` (not fully encrypted). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, a `ProxyJump` it cannot link, `ProxyCommand`, wildcard hosts) is listed in a note when the import finishes.
+`Import...` in the sidebar reads an OpenSSH `config`, a PuTTY registry export (`reg export HKCU\Software\SimonTatham\PuTTY\Sessions putty.reg`), a `.rdp` file, an RDCMan `.rdg`, an mRemoteNG `confCons.xml` (not fully encrypted) or a MobaXterm sessions export (`.mxtsessions`, or the `[Bookmarks]` of `MobaXterm.ini`; SSH, Telnet and RDP sessions are imported). Folders are kept. Passwords are never imported; add them afterwards by editing the connection. Anything skipped (a protocol not supported yet, a `ProxyJump` it cannot link, `ProxyCommand`, wildcard hosts) is listed in a note when the import finishes.
 
 ## Running the app
 
@@ -243,15 +243,14 @@ Plugins never see the credential vault. They ask the `ICredentialBroker` for one
 
 ## Roadmap
 
-Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, AI chat, CI.
+Done: encrypted vault, jump hosts, port forwards, saved connections, SSH terminals with split panes and broadcast, themes with hot reload, importers (PuTTY, OpenSSH config, mRemoteNG, RDCMan, `.rdp`), command palette and shortcuts, RDP (in a tab or the Windows client), SFTP file browser, scrollback search, session logs, auto-reconnect, SSH agent, scrollback size, auto-lock, web pages, saved workspaces, plugin loading, AI chat, MobaXterm import, CI.
 
 Next, in this order:
 
-1. A MobaXterm importer (needs a sample export)
-2. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
-3. Clipboard clearing
-4. VNC
-5. Cleanup: newer GitHub Actions versions and a test that blocks on a task
+1. Packaging: finish publishing to winget (the manifest generator exists, see `packaging/README.md`), a Chocolatey package, and a signed installer; a Scoop manifest is already in `packaging/scoop`
+2. Clipboard clearing
+3. VNC
+4. Cleanup: newer GitHub Actions versions and a test that blocks on a task
 
 ## License
 

@@ -155,6 +155,33 @@ public sealed class ConnectionStore
         }
     }
 
+    /// <summary>Everything inside a folder, at any depth: its sub-folders and its connections.</summary>
+    public (IReadOnlyList<FolderEntry> Folders, IReadOnlyList<ConnectionEntry> Connections) ContentsOf(string id)
+    {
+        lock (_gate)
+        {
+            var inside = new HashSet<string>(StringComparer.Ordinal) { id };
+            var queue = new Queue<string>();
+            queue.Enqueue(id);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                foreach (var child in _folders.Values.Where(f => f.ParentId == current))
+                {
+                    if (inside.Add(child.Id))
+                    {
+                        queue.Enqueue(child.Id);
+                    }
+                }
+            }
+
+            inside.Remove(id);
+            return (
+                _folders.Values.Where(f => inside.Contains(f.Id)).ToArray(),
+                _connections.Values.Where(c => c.FolderId is not null && (c.FolderId == id || inside.Contains(c.FolderId))).ToArray());
+        }
+    }
+
     /// <summary>
     /// Removes a folder. With <paramref name="deleteContents"/> everything inside goes too; otherwise the
     /// contents move up to the folder's parent.

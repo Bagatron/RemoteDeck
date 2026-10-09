@@ -1281,15 +1281,58 @@ public partial class MainWindow : Window
                 break;
 
             case FolderEntry folder:
-                if (Confirm($"Delete the folder \"{folder.Name}\"? Its connections move up one level; nothing inside is deleted."))
-                {
-                    Try(() => _data.Store.RemoveFolder(folder.Id, deleteContents: false));
-                }
-
+                DeleteFolder(folder);
                 break;
         }
 
         RefreshTree();
+    }
+
+    private void DeleteFolder(FolderEntry folder)
+    {
+        var (subFolders, connections) = _data.Store.ContentsOf(folder.Id);
+        if (subFolders.Count == 0 && connections.Count == 0)
+        {
+            if (Confirm($"Delete the empty folder \"{folder.Name}\"?"))
+            {
+                Try(() => _data.Store.RemoveFolder(folder.Id));
+            }
+
+            return;
+        }
+
+        var what = connections.Count == 1 ? "1 connection" : $"{connections.Count} connections";
+        if (subFolders.Count > 0)
+        {
+            what += subFolders.Count == 1 ? " and 1 sub-folder" : $" and {subFolders.Count} sub-folders";
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            $"The folder \"{folder.Name}\" holds {what}.\n\n"
+            + "Yes: delete the folder and everything inside it.\n"
+            + "No: delete only the folder; its contents move up one level.\n"
+            + "Cancel: keep everything.",
+            "Delete folder",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Cancel)
+        {
+            return;
+        }
+
+        var deleteAll = answer == MessageBoxResult.Yes;
+        var credentialIds = connections.Select(c => c.CredentialId).OfType<string>().Distinct().ToList();
+        Try(() => _data.Store.RemoveFolder(folder.Id, deleteContents: deleteAll));
+        if (deleteAll)
+        {
+            var stillUsed = _data.Store.ReferencedCredentialIds();
+            foreach (var id in credentialIds.Where(id => !stillUsed.Contains(id)))
+            {
+                _data.Vault.Remove(id);
+            }
+        }
     }
 
     private bool Confirm(string text) =>
