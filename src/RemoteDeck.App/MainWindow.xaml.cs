@@ -754,6 +754,8 @@ public partial class MainWindow : Window
             new("Export a backup...", string.Empty, ExportBackup),
             new("Restore a backup...", string.Empty, RestoreBackup),
             new("Undo last change to the connection list", string.Empty, UndoTree),
+            new("Local terminal: Windows PowerShell", string.Empty, () => _ = OpenLocalTerminalAsync("powershell", "Windows PowerShell")),
+            new("Local terminal: Command Prompt", string.Empty, () => _ = OpenLocalTerminalAsync("cmd", "Command Prompt")),
             new("Lock now", "Ctrl+Shift+L", LockNow),
             AutoLockItem(5),
             AutoLockItem(15),
@@ -3765,6 +3767,50 @@ public partial class MainWindow : Window
     }
 
     private void Connect_Click(object sender, RoutedEventArgs e) => _ = OpenQuickAsync(AddressBox.Text);
+
+    /// <summary>Lists the shells on this computer and opens the one picked in the current tab (or a new one if it is busy).</summary>
+    private void LocalTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu
+        {
+            PlacementTarget = LocalTerminalButton,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+
+        void Add(string header, string shell)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => _ = OpenLocalTerminalAsync(shell, header);
+            menu.Items.Add(item);
+        }
+
+        Add("Windows PowerShell", "powershell");
+        if (IsOnPath("pwsh.exe") || File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe")))
+        {
+            Add("PowerShell 7", "pwsh");
+        }
+
+        Add("Command Prompt", "cmd");
+        menu.IsOpen = true;
+    }
+
+    private static bool IsOnPath(string fileName) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(folder => File.Exists(Path.Combine(folder, fileName)));
+
+    /// <summary>Starts a shell on this computer, in your home folder. It is a git-terminal connection that is not saved.</summary>
+    private Task OpenLocalTerminalAsync(string shell, string title)
+    {
+        var definition = new ConnectionDefinition(
+            Guid.NewGuid().ToString("N"),
+            title,
+            "git",
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            Options: new Dictionary<string, string> { ["shell"] = shell });
+        var broker = new VaultCredentialBroker(_data.Vault, _data.Store.CredentialIdFor);
+        return StartSessionAsync(definition, broker, title, newTab: false, _git);
+    }
 
     private void Write(PaneSession pane, string text) =>
         _terminals.Output(pane.TerminalId, Encoding.UTF8.GetBytes(text));

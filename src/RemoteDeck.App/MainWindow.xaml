@@ -141,6 +141,8 @@
             <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" Padding="8,6">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="Quick connect" Padding="14,4" Margin="8,0,0,0" Click="Connect_Click" />
+                    <Button x:Name="LocalTerminalButton" DockPanel.Dock="Left" Content="Local terminal  &#x25BE;" Padding="12,4" Margin="0,0,8,0"
+                            ToolTip="Open PowerShell or Command Prompt on this computer" Click="LocalTerminal_Click" />
                     <TextBox x:Name="AddressBox" Padding="6,4" VerticalContentAlignment="Center"
                              ToolTip="user@host or user@host:port, then press Enter"
                              KeyDown="AddressBox_KeyDown" />
