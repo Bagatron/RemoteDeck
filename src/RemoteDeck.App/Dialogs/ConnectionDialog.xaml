@@ -22,6 +22,7 @@
             <ComboBoxItem Content="AI chat (Open WebUI / OpenAI-compatible)" Tag="ai" />
             <ComboBoxItem Content="Editor / IDE (opens a window)" Tag="editor" />
             <ComboBoxItem Content="Remote Desktop (RDP)" Tag="rdp" />
+            <ComboBoxItem Content="VNC" Tag="vnc" />
             <ComboBoxItem Content="Web page (http / https)" Tag="web" />
         </ComboBox>
 
@@ -48,8 +49,10 @@
             <TextBlock Text="Saved login" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
             <ComboBox x:Name="LoginBox" Padding="6,5" DisplayMemberPath="Label" SelectionChanged="LoginBox_SelectionChanged" />
         </StackPanel>
+        <StackPanel x:Name="UserPanel">
         <TextBlock Text="Username" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
         <TextBox x:Name="UserBox" Padding="6,5" />
+        </StackPanel>
 
         <StackPanel x:Name="SecretPanel">
         <TextBlock x:Name="PasswordLabel" Text="Password" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
@@ -78,6 +81,17 @@
                        Margin="0,4,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
         </StackPanel>
 
+        <StackPanel x:Name="VncPanel" Visibility="Collapsed">
+            <CheckBox x:Name="ExternalVncBox" Content="Open in an external VNC viewer instead of a tab" Margin="0,12,0,0" />
+            <TextBlock Text="Viewer program (optional)" Foreground="{StaticResource TextDim}" Margin="0,8,0,4" />
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Browse..." Margin="6,0,0,0" Padding="10,4" Click="BrowseViewer_Click" />
+                <TextBox x:Name="ViewerBox" Padding="6,5" ToolTip="For example C:\Program Files\TightVNC\tvnviewer.exe. Leave empty to use whatever Windows opens for vnc:// links." />
+            </DockPanel>
+            <TextBlock Text="By default the session opens in a RemoteDeck tab or pane with the built-in viewer, using the saved password above (or asking for it). It signs in with no password or the classic VNC password; for a server that needs something else (a user name, or Apple Screen Sharing) use an external viewer. The external viewer is started with host::port. VNC itself is not encrypted, so use it on a network you trust or through an SSH tunnel."
+                       Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
+        </StackPanel>
+
         <StackPanel x:Name="TelnetPanel" Visibility="Collapsed">
             <TextBlock Text="Telnet sends everything, including the login you type, without encryption. Use it only for devices on a network you trust. There is nothing to save here: you log in at the remote prompt."
                        Margin="0,12,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
@@ -85,6 +99,15 @@
         </StackPanel>
 
         <StackPanel x:Name="SerialPanel" Visibility="Collapsed">
+            <TextBlock Text="Detected ports" Foreground="{StaticResource TextDim}" Margin="0,12,0,4" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="PortsList" Padding="6,5" SelectionChanged="PortsList_SelectionChanged" />
+                <Button Grid.Column="1" Content="Rescan" Margin="8,0,0,0" Padding="10,5" Click="RescanPorts_Click" />
+            </Grid>
             <TextBlock x:Name="PortsHint" Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextDim}" />
             <Grid Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>

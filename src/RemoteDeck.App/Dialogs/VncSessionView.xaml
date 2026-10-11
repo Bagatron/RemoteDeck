@@ -1,0 +1,21 @@
+<UserControl x:Class="RemoteDeck.App.Dialogs.VncSessionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="True" FocusVisualStyle="{x:Null}">
+    <DockPanel>
+        <Border x:Name="BarBorder" DockPanel.Dock="Top" Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}"
+                BorderThickness="0,0,0,1" Padding="8,5">
+            <DockPanel>
+                <Button x:Name="ActionButton" DockPanel.Dock="Right" Content="Disconnect" Padding="10,3" Margin="8,0,0,0" Click="Action_Click" />
+                <Button x:Name="KeysButton" DockPanel.Dock="Right" Content="Ctrl+Alt+Del" Padding="10,3" Margin="8,0,0,0" Click="Keys_Click"
+                        ToolTip="Sends Ctrl+Alt+Delete to the remote computer (also Ctrl+Alt+End while the screen has focus)" />
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{DynamicResource TextDim}"
+                           TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+        <Border x:Name="ScreenHost" Background="Black" ClipToBounds="True" Focusable="False"
+                MouseDown="Screen_MouseDown" MouseUp="Screen_MouseUp" MouseMove="Screen_MouseMove" MouseWheel="Screen_MouseWheel">
+            <Image x:Name="Screen" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+        </Border>
+    </DockPanel>
+</UserControl>

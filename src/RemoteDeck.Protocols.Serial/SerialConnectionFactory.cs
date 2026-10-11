@@ -19,10 +19,7 @@ public sealed class SerialConnectionFactory : IConnectionFactory
     {
         try
         {
-            return SerialPort.GetPortNames()
-                .OrderBy(name => name.Length)
-                .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return SerialPortDetector.InOrder(SerialPort.GetPortNames()).ToList();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {

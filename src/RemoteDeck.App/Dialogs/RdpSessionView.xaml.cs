@@ -36,10 +36,29 @@ public partial class RdpSessionView : UserControl, IDisposable
     /// <summary>Raised whenever the status text changes. A pane uses it, because its own bar is hidden behind the terminal page.</summary>
     internal event Action<string>? StatusChanged;
 
-    /// <summary>Hides the status bar; a pane shows the status in its header instead.</summary>
+    private bool _compact;
+
+    /// <summary>
+    /// For a pane: the bar (status and button) is hidden while connected, because the pane's header shows the status,
+    /// and appears over the top of the desktop only when the session has ended, to offer Reconnect.
+    /// </summary>
     internal bool BarHidden
     {
-        set => BarBorder.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        set
+        {
+            _compact = value;
+            BarBorder.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    /// <summary>Sets the button to Reconnect (the session is over) or Disconnect, and shows the bar when it is needed.</summary>
+    private void OfferReconnect(bool offer)
+    {
+        ActionButton.Content = offer ? "Reconnect" : "Disconnect";
+        if (_compact)
+        {
+            BarBorder.Visibility = offer ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void ShowStatus(string text)
@@ -160,13 +179,13 @@ public partial class RdpSessionView : UserControl, IDisposable
         catch (Exception ex)
         {
             ShowStatus("Remote Desktop could not connect: " + ex.Message);
-            ActionButton.Content = "Reconnect";
+            OfferReconnect(true);
             return;
         }
 
         _sawActive = false;
         _polls = 0;
-        ActionButton.Content = "Disconnect";
+        OfferReconnect(false);
         ShowStatus($"Connecting to {_info.Host}...");
         _poll.Start();
     }
@@ -258,7 +277,7 @@ public partial class RdpSessionView : UserControl, IDisposable
             ShowStatus(_sawActive
                 ? "Disconnected. Use Reconnect to sign in again."
                 : "Could not connect. Check the address and sign-in, and that Remote Desktop is turned on for that computer.");
-            ActionButton.Content = "Reconnect";
+            OfferReconnect(true);
         }
     }
 

@@ -83,8 +83,8 @@ public sealed class PaneSession
     }
 }
 
-/// <summary>A saved Remote Desktop connection shown in a tab. The password is never part of it.</summary>
-public sealed record RdpInfo(string Name, string Host, int Port, string? User, string? Domain);
+/// <summary>A saved Remote Desktop connection, or (<paramref name="Vnc"/>) a VNC one, shown in a tab or pane. The password is never part of it.</summary>
+public sealed record RdpInfo(string Name, string Host, int Port, string? User, string? Domain, bool Vnc = false);
 
 /// <summary>A saved web connection shown in a tab instead of terminal panes.</summary>
 /// <summary>An editor window shown inside a tab.</summary>

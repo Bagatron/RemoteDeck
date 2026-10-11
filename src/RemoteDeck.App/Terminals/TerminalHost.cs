@@ -164,6 +164,21 @@ public sealed class TerminalHost
         });
     }
 
+    /// <summary>
+    /// Shows an embossed logo behind every terminal. <paramref name="url"/> is a path under the page (a built-in logo) or a
+    /// data: URL; null removes it. <paramref name="opacity"/> is 0..1; <paramref name="dark"/> picks the emboss for dark or light themes.
+    /// </summary>
+    public void SetLogo(string? url, double opacity, bool dark)
+    {
+        Send(new JsonObject
+        {
+            ["t"] = "logo",
+            ["url"] = url,
+            ["opacity"] = Math.Clamp(opacity, 0.01, 0.5),
+            ["dark"] = dark,
+        });
+    }
+
     public void ShowTab(string tabId) => Send(new JsonObject { ["t"] = "show", ["tab"] = tabId });
 
     public void CloseTab(string tabId) => Send(new JsonObject { ["t"] = "closeTab", ["tab"] = tabId });

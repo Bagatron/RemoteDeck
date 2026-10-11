@@ -90,7 +90,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Button x:Name="ThemeButton" Grid.Row="0" Grid.Column="0" Content="Theme  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" Click="ThemeButton_Click" />
-                    <Button Grid.Row="0" Grid.Column="2" Content="Import..." Padding="6,4" HorizontalAlignment="Stretch" Click="Import_Click" />
+                    <Button x:Name="ImportButton" Grid.Row="0" Grid.Column="2" Content="Import / Export  &#x25BE;" Padding="6,4" HorizontalAlignment="Stretch" ToolTip="Import connections, or back up and restore everything" Click="ImportButton_Click" />
                     <Button Grid.Row="2" Grid.Column="0" Content="Plugins..." Padding="6,4" HorizontalAlignment="Stretch" Click="Plugins_Click" />
                     <Button Grid.Row="2" Grid.Column="2" Content="Logins..." Padding="6,4" HorizontalAlignment="Stretch" ToolTip="Saved logins" Click="Logins_Click" />
                 </Grid>
@@ -101,6 +101,7 @@
                       MouseDoubleClick="Tree_MouseDoubleClick" KeyDown="Tree_KeyDown"
                       PreviewMouseRightButtonDown="Tree_PreviewMouseRightButtonDown"
                       AllowDrop="True" PreviewMouseLeftButtonDown="Tree_PreviewMouseLeftButtonDown"
+                      PreviewMouseLeftButtonUp="Tree_PreviewMouseLeftButtonUp"
                       PreviewMouseMove="Tree_PreviewMouseMove" DragOver="Tree_DragOver"
                       DragLeave="Tree_DragLeave" Drop="Tree_Drop">
                 <TreeView.ContextMenu>
@@ -112,6 +113,7 @@
                         <MenuItem x:Name="MenuEdit" Header="Edit..." Click="MenuEdit_Click" />
                         <MenuItem x:Name="MenuRename" Header="Rename folder..." Click="MenuRename_Click" />
                         <MenuItem x:Name="MenuDelete" Header="Delete" Click="MenuDelete_Click" />
+                        <MenuItem x:Name="MenuUndo" Header="Undo" Click="MenuUndo_Click" />
                     </ContextMenu>
                 </TreeView.ContextMenu>
             </TreeView>
@@ -146,12 +148,22 @@
             </Border>
 
             <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-                <DockPanel>
-                <Button DockPanel.Dock="Right" Content="+" ToolTip="New tab" Margin="4" Padding="10,0" FontSize="16" Click="NewTab_Click" />
                 <ListBox x:Name="TabStrip" ItemsSource="{Binding Tabs}" Background="Transparent" BorderThickness="0"
                          ItemContainerStyle="{StaticResource TabItemStyle}"
                          SelectionChanged="TabStrip_SelectionChanged"
                          ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <!-- The + button is part of the strip, so it always sits right after the last tab. -->
+                    <ListBox.Template>
+                        <ControlTemplate TargetType="ListBox">
+                            <ScrollViewer Focusable="False" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Padding="0">
+                                <StackPanel Orientation="Horizontal">
+                                    <ItemsPresenter />
+                                    <Button Content="+" ToolTip="New tab (Ctrl+Shift+T)" Margin="4" Padding="10,0" FontSize="16"
+                                            VerticalAlignment="Center" Click="NewTab_Click" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </ControlTemplate>
+                    </ListBox.Template>
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" />
@@ -169,7 +181,6 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                </DockPanel>
             </Border>
 
             <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1" Padding="8,5">

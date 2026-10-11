@@ -30,6 +30,9 @@ public partial class ConnectionDialog : Window
     internal ConnectionDialog(ConnectionStore store, ConnectionEntry? existing, string? defaultFolderId)
     {
         InitializeComponent();
+        _portTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _portTimer.Tick += (_, _) => _ = ScanPortsAsync();
+        Closed += (_, _) => _portTimer.Stop();
         WindowFit.ToScreen(this);
         _existing = existing;
         Title = existing is null ? "New connection" : "Edit connection";
@@ -127,6 +130,8 @@ public partial class ConnectionDialog : Window
             EditorArgsBox.Text = Option(existing, "arguments");
             LocalEchoBox.IsChecked = string.Equals(Option(existing, "localEcho"), "true", StringComparison.OrdinalIgnoreCase);
             ExternalBox.IsChecked = string.Equals(Option(existing, "externalClient"), "true", StringComparison.OrdinalIgnoreCase);
+            ExternalVncBox.IsChecked = ExternalBox.IsChecked;
+            ViewerBox.Text = Option(existing, "viewer");
             LogBox.IsChecked = string.Equals(Option(existing, "logSession"), "true", StringComparison.OrdinalIgnoreCase);
             ForwardsBox.Text = Option(existing, "forwards").Replace("\n", Environment.NewLine);
             FavoriteBox.IsChecked = existing.Favorite;
@@ -163,10 +168,88 @@ public partial class ConnectionDialog : Window
 
     private bool IsTelnet => SelectedType == "telnet";
 
+    private readonly System.Windows.Threading.DispatcherTimer _portTimer;
+    private bool _scanning;
+    private bool _settingPort;
+    private string _lastPortKey = string.Empty;
+
+    private async Task ScanPortsAsync(bool force = false)
+    {
+        if (_scanning || !IsSerial)
+        {
+            return;
+        }
+
+        _scanning = true;
+        try
+        {
+            var ports = await Task.Run(SerialPortDetector.Detect);
+            var key = string.Join("|", ports.Select(p => p.Label));
+            if (force || key != _lastPortKey)
+            {
+                _lastPortKey = key;
+                ApplyPorts(ports);
+            }
+        }
+        catch (Exception)
+        {
+            PortsHint.Text = "Could not look for serial ports. Type the port name.";
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    private void ApplyPorts(IReadOnlyList<SerialPortInfo> ports)
+    {
+        var typed = HostBox.Text.Trim();
+        _settingPort = true;
+        try
+        {
+            PortsList.ItemsSource = ports;
+            PortsList.DisplayMemberPath = nameof(SerialPortInfo.Label);
+            PortsList.SelectedItem = ports.FirstOrDefault(p => string.Equals(p.Name, typed, StringComparison.OrdinalIgnoreCase));
+            if (typed.Length == 0 && ports.Count == 1)
+            {
+                PortsList.SelectedIndex = 0;
+                HostBox.Text = ports[0].Name;
+                if (NameBox.Text.Trim().Length == 0)
+                {
+                    NameBox.Text = ports[0].Description.Length > 0 ? ports[0].Description : ports[0].Name;
+                }
+            }
+        }
+        finally
+        {
+            _settingPort = false;
+        }
+
+        PortsHint.Text = ports.Count > 0
+            ? "Active ports: " + string.Join(", ", ports.Select(p => p.Name)) + ". The list updates when you plug something in. The baud rate cannot be detected; check the device's manual."
+            : "No serial ports found. Plug the device in and it will appear here, or type the port name.";
+    }
+
+    private void PortsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_settingPort || PortsList.SelectedItem is not SerialPortInfo port)
+        {
+            return;
+        }
+
+        HostBox.Text = port.Name;
+        if (NameBox.Text.Trim().Length == 0)
+        {
+            NameBox.Text = port.Description.Length > 0 ? port.Description : port.Name;
+        }
+    }
+
+    private void RescanPorts_Click(object sender, RoutedEventArgs e) => _ = ScanPortsAsync(force: true);
+
     private bool IsSerial => SelectedType == "serial";
 
     /// <summary>The saved login picked for this connection, or null when the login is typed here.</summary>
-    internal string? SelectedLoginId => IsSsh || IsRdp ? (LoginBox.SelectedItem as LoginChoice)?.Id : null;
+    internal string? SelectedLoginId => IsSsh || IsRdp || IsVnc ? (LoginBox.SelectedItem as LoginChoice)?.Id : null;
 
     /// <summary>True when the typed login should also be added to Saved logins.</summary>
     internal bool SaveAsLogin => SaveAsLoginBox.Visibility == Visibility.Visible && SaveAsLoginBox.IsChecked == true;
@@ -178,6 +261,8 @@ public partial class ConnectionDialog : Window
     private bool IsEditor => SelectedType == "editor";
 
     private bool IsRdp => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "rdp";
+
+    private bool IsVnc => (TypeBox.SelectedItem as ComboBoxItem)?.Tag as string == "vnc";
 
     private void LoginBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -213,14 +298,14 @@ public partial class ConnectionDialog : Window
             return;
         }
 
-        var supportsLogins = IsSsh || IsRdp;
+        var supportsLogins = IsSsh || IsRdp || IsVnc;
         LoginPickPanel.Visibility = supportsLogins && _hasLogins ? Visibility.Visible : Visibility.Collapsed;
         SaveAsLoginBox.Visibility = supportsLogins && SelectedLoginId is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void TypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || AiPanel is null || AiKeyLabel is null || KeyExpander is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
+        if (PortBox is null || JumpPanel is null || LoginPanel is null || WebPanel is null || HostLabel is null || SecretPanel is null || RdpPanel is null || VncPanel is null || UserPanel is null || TelnetPanel is null || SerialPanel is null || GitPanel is null || AiPanel is null || AiKeyLabel is null || KeyExpander is null || EditorPanel is null || CustomEditorPanel is null || EditorBox is null)
         {
             return;
         }
@@ -237,14 +322,18 @@ public partial class ConnectionDialog : Window
         }
         if (IsSerial)
         {
-            var ports = SerialConnectionFactory.AvailablePorts();
-            PortsHint.Text = ports.Count > 0
-                ? "Ports found on this computer: " + string.Join(", ", ports) + "."
-                : "No serial ports were found. Plug the device in, or type the port name.";
+            _ = ScanPortsAsync();
+            _portTimer.Start();
+        }
+        else
+        {
+            _portTimer.Stop();
         }
         TelnetPanel.Visibility = IsTelnet ? Visibility.Visible : Visibility.Collapsed;
         WebPanel.Visibility = IsWeb ? Visibility.Visible : Visibility.Collapsed;
         RdpPanel.Visibility = IsRdp ? Visibility.Visible : Visibility.Collapsed;
+        VncPanel.Visibility = IsVnc ? Visibility.Visible : Visibility.Collapsed;
+        UserPanel.Visibility = IsVnc ? Visibility.Collapsed : Visibility.Visible;
 
         // Remote Desktop can keep a password too (used when it opens in a tab); only SSH has key files.
         KeyExpander.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
@@ -253,7 +342,16 @@ public partial class ConnectionDialog : Window
 
         JumpPanel.Visibility = IsSsh ? Visibility.Visible : Visibility.Collapsed;
 
-        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsTelnet ? "Leave empty for 23" : IsAi ? "Leave empty to use the address as typed" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
+        PortBox.ToolTip = IsWeb ? "Leave empty for 443 (https) or 80 (http)" : IsRdp ? "Leave empty for 3389" : IsVnc ? "Leave empty for 5900" : IsTelnet ? "Leave empty for 23" : IsAi ? "Leave empty to use the address as typed" : IsSsh ? "Leave empty for 22" : "Leave empty for the default";
+    }
+
+    private void BrowseViewer_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "Programs (*.exe)|*.exe|All files|*.*", Title = "Choose a VNC viewer" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            ViewerBox.Text = dialog.FileName;
+        }
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -343,7 +441,7 @@ public partial class ConnectionDialog : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var host = HostBox.Text.Trim();
-        var user = UserBox.Text.Trim();
+        var user = IsVnc ? string.Empty : UserBox.Text.Trim();
         var name = NameBox.Text.Trim();
         if (name.Length == 0)
         {
@@ -591,13 +689,22 @@ public partial class ConnectionDialog : Window
             options.Remove("localEcho");
         }
 
-        if (IsRdp && ExternalBox.IsChecked == true)
+        if ((IsRdp && ExternalBox.IsChecked == true) || (IsVnc && ExternalVncBox.IsChecked == true))
         {
             options["externalClient"] = "true";
         }
         else
         {
             options.Remove("externalClient");
+        }
+
+        if (IsVnc && ViewerBox.Text.Trim().Length > 0)
+        {
+            options["viewer"] = ViewerBox.Text.Trim();
+        }
+        else
+        {
+            options.Remove("viewer");
         }
 
         if (IsSsh && ReconnectBox.IsChecked == true)

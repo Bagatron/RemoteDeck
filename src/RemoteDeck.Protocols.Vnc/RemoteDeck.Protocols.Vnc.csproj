@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RemoteDeck.Protocols.Vnc</AssemblyName>
+    <RootNamespace>RemoteDeck.Protocols.Vnc</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RemoteDeck.Protocols.Vnc.Tests" />
+  </ItemGroup>
+
+</Project>

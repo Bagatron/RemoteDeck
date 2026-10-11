@@ -8,6 +8,7 @@
     <Project Path="src/RemoteDeck.Protocols.Serial/RemoteDeck.Protocols.Serial.csproj" />
     <Project Path="src/RemoteDeck.Protocols.Git/RemoteDeck.Protocols.Git.csproj" />
     <Project Path="src/RemoteDeck.Protocols.Ai/RemoteDeck.Protocols.Ai.csproj" />
+    <Project Path="src/RemoteDeck.Protocols.Vnc/RemoteDeck.Protocols.Vnc.csproj" />
     <Project Path="src/RemoteDeck.App/RemoteDeck.App.csproj" />
   </Folder>
   <Folder Name="/tools/">
@@ -24,5 +25,6 @@
     <Project Path="tests/RemoteDeck.Protocols.Serial.Tests/RemoteDeck.Protocols.Serial.Tests.csproj" />
     <Project Path="tests/RemoteDeck.Protocols.Git.Tests/RemoteDeck.Protocols.Git.Tests.csproj" />
     <Project Path="tests/RemoteDeck.Protocols.Ai.Tests/RemoteDeck.Protocols.Ai.Tests.csproj" />
+    <Project Path="tests/RemoteDeck.Protocols.Vnc.Tests/RemoteDeck.Protocols.Vnc.Tests.csproj" />
   </Folder>
 </Solution>

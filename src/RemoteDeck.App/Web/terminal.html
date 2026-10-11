@@ -56,6 +56,16 @@
 
   .body { position: relative; flex: 1 1 0; min-height: 0; }
   .xt { position: absolute; inset: 0; padding: var(--body-top) 0 0 var(--body-left); box-sizing: border-box; }
+  /* Logo watermark: an embossed image behind the text. It only shows when the host sends one ("logo" message);
+     the terminal then draws on a transparent background so the pane's own colour and the image show through. */
+  .wm { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; }
+  .wm img { width: min(52%, 460px); height: min(52%, 460px); object-fit: contain; user-select: none;
+            opacity: var(--wm-opacity, .08);
+            filter: grayscale(1) brightness(var(--wm-tone, 1.1))
+                    drop-shadow(1.5px 1.5px 0 var(--wm-hi, rgba(255,255,255,.6)))
+                    drop-shadow(-1.5px -1.5px 0 var(--wm-lo, rgba(0,0,0,.8))); }
+  body.has-logo .wm { display: flex; }
+  body.has-logo .body { background: var(--term-bg, var(--bg)); }
   .placeholder { position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
                  text-align: center; color: var(--dim); line-height: 1.7; pointer-events: none; }
   .pane.empty .placeholder { display: flex; }
@@ -114,6 +124,10 @@
     brightBlack: "#4c566a", brightRed: "#bf616a", brightGreen: "#a3be8c", brightYellow: "#ebcb8b",
     brightBlue: "#81a1c1", brightMagenta: "#b48ead", brightCyan: "#8fbcbb", brightWhite: "#eceff4"
   };
+  // The terminal palette as the theme gave it, and the logo watermark the host asked for (url null = none).
+  let rawTerm = termTheme;
+  let wm = { url: null, opacity: 0.08, dark: true };
+  function effectiveTerm() { return wm.url ? Object.assign({}, rawTerm, { background: "rgba(0,0,0,0)" }) : rawTerm; }
   let termFont = { family: '"Cascadia Mono", Consolas, "Courier New", monospace', size: 14 };
   const ICON = {
     cast: '<svg viewBox="0 0 12 12" width="12" height="12"><circle cx="6" cy="6" r="1.6" fill="currentColor"/><path d="M3.3 3.3a3.8 3.8 0 0 0 0 5.4M8.7 3.3a3.8 3.8 0 0 1 0 5.4" stroke="currentColor" fill="none"/></svg>',
@@ -207,7 +221,7 @@
       '<button data-a="splitRight" title="Split right">' + ICON.right + '</button>' +
       '<button data-a="splitDown" title="Split down">' + ICON.down + '</button>' +
       '<button data-a="close">' + ICON.close + '</button></div>' +
-      '<div class="body"><div class="xt"></div>' +
+      '<div class="body"><div class="wm"><img alt="" draggable="false"></div><div class="xt"></div>' +
       '<div class="find"><input type="text" placeholder="Find" spellcheck="false">' +
       '<span class="count"></span>' +
       '<button data-f="case" title="Match case">Aa</button>' +
@@ -218,6 +232,7 @@
 
     const body = el.querySelector(".body");
     body.dataset.id = id;
+    if (wm.url) el.querySelector(".wm img").src = wm.url;
 
     const term = new Terminal({
       fontFamily: termFont.family,
@@ -225,6 +240,7 @@
       cursorBlink: true,
       scrollback: scrollbackLines,
       allowProposedApi: true,   // the find bar highlights matches with decorations
+      allowTransparency: true,  // the logo watermark shows through a transparent terminal background
       theme: termTheme
     });
     const fit = new FitAddon.FitAddon();
@@ -526,7 +542,9 @@
       style.setProperty("--body-top", density[1] + "px");
       style.setProperty("--body-left", density[2] + "px");
     }
-    termTheme = m.term;
+    rawTerm = m.term;
+    style.setProperty("--term-bg", m.term.background);
+    termTheme = effectiveTerm();
     termFont = m.font;
     for (const pane of panes.values()) {
       pane.term.options.theme = termTheme;
@@ -534,6 +552,27 @@
       pane.term.options.fontSize = termFont.size;
     }
     for (const id of panes.keys()) refit(id);
+  }
+
+  function setLogoImages() {
+    for (const img of document.querySelectorAll(".wm img")) {
+      if (wm.url) img.src = wm.url; else img.removeAttribute("src");
+    }
+  }
+
+  // { t: "logo", url, opacity, dark }: url is a page-relative path or a data: URL, or null to remove the watermark.
+  function applyLogo(m) {
+    wm = { url: m.url || null, opacity: m.opacity, dark: m.dark };
+    const style = document.documentElement.style;
+    style.setProperty("--wm-opacity", String(m.opacity));
+    // Light themes get a dark, soft emboss; dark themes a light one.
+    style.setProperty("--wm-tone", m.dark ? "1.1" : "0.35");
+    style.setProperty("--wm-hi", m.dark ? "rgba(255,255,255,.6)" : "rgba(255,255,255,1)");
+    style.setProperty("--wm-lo", m.dark ? "rgba(0,0,0,.8)" : "rgba(0,0,0,.4)");
+    document.body.classList.toggle("has-logo", !!wm.url);
+    termTheme = effectiveTerm();
+    for (const pane of panes.values()) pane.term.options.theme = termTheme;
+    setLogoImages();
   }
 
   function updateEmptyHint() {
@@ -596,6 +635,7 @@
     const m = event.data;
     switch (m.t) {
       case "theme": applyTheme(m); break;
+      case "logo": applyLogo(m); break;
       case "scrollback":
         scrollbackLines = m.lines;
         for (const pane of panes.values()) pane.term.options.scrollback = m.lines;

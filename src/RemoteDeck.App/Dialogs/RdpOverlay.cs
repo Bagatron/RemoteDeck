@@ -4,7 +4,7 @@ using System.Windows.Media;
 namespace RemoteDeck.App.Dialogs;
 
 /// <summary>
-/// A Remote Desktop session for a pane of a split layout. Both the terminal page and the Remote Desktop control are
+/// A Remote Desktop or VNC session for a pane of a split layout. Both the terminal page and the Remote Desktop control are
 /// native windows, and WPF content cannot be drawn over either, so the session lives in a borderless window owned by
 /// the main window that is moved over the pane (and hidden when the pane is not on screen), like the editor's.
 /// </summary>
@@ -12,7 +12,7 @@ internal sealed class RdpOverlay : Window
 {
     private bool _closed;
 
-    public RdpOverlay(RdpSessionView view, Window owner)
+    public RdpOverlay(FrameworkElement view, Window owner)
     {
         View = view;
         Owner = owner;
@@ -29,7 +29,7 @@ internal sealed class RdpOverlay : Window
         Closed += (_, _) => _closed = true;
     }
 
-    public RdpSessionView View { get; }
+    public FrameworkElement View { get; }
 
     /// <summary>Moves the session over a pane (device-independent pixels, screen coordinates) and shows it.</summary>
     public void Place(double left, double top, double width, double height)
@@ -60,7 +60,7 @@ internal sealed class RdpOverlay : Window
     /// <summary>Disconnects and removes the session.</summary>
     public void Shutdown()
     {
-        View.Dispose();
+        (View as IDisposable)?.Dispose();
         if (_closed)
         {
             return;

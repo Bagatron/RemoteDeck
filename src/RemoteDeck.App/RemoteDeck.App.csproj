@@ -43,6 +43,7 @@
     <ProjectReference Include="..\RemoteDeck.Protocols.Ai\RemoteDeck.Protocols.Ai.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Serial\RemoteDeck.Protocols.Serial.csproj" />
     <ProjectReference Include="..\RemoteDeck.Protocols.Git\RemoteDeck.Protocols.Git.csproj" />
+    <ProjectReference Include="..\RemoteDeck.Protocols.Vnc\RemoteDeck.Protocols.Vnc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -664,6 +664,37 @@ public sealed class ConnectionStore
         return store;
     }
 
+    /// <summary>
+    /// Replaces everything in the store with a catalog saved earlier by <see cref="Serialize"/> (used to undo a change).
+    /// Throws <see cref="CatalogException"/>, leaving the store as it was, if the text is not a valid catalog.
+    /// </summary>
+    public void Restore(string json)
+    {
+        var source = Deserialize(json);
+        lock (_gate)
+        {
+            _folders.Clear();
+            _connections.Clear();
+            _logins.Clear();
+            foreach (var (id, folder) in source._folders)
+            {
+                _folders[id] = folder;
+            }
+
+            foreach (var (id, connection) in source._connections)
+            {
+                _connections[id] = connection;
+            }
+
+            foreach (var (id, login) in source._logins)
+            {
+                _logins[id] = login;
+            }
+        }
+
+        RaiseChanged();
+    }
+
     // ---- helpers (call with the lock held where they touch the dictionaries) ----
 
     private string? CredentialIdForLocked(ConnectionEntry connection)

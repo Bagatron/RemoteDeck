@@ -12,6 +12,7 @@ using RemoteDeck.App.Sftp;
 using RemoteDeck.App.Terminals;
 using System.Reflection;
 using RemoteDeck.Core;
+using RemoteDeck.Core.Backup;
 using RemoteDeck.Core.Broadcast;
 using RemoteDeck.Core.Chats;
 using RemoteDeck.Core.Connections;
@@ -60,6 +61,8 @@ public partial class MainWindow : Window
         WindowFit.ToScreen(this, capMaximum: false);
         DataContext = this;
         _data = data;
+        _undo = new CatalogUndo(_data.Store);
+        _undo.CredentialsReleased += PurgeCredentials;
 
         Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x2E, 0x34, 0x40);
         _terminals = new TerminalHost(Web);
@@ -96,7 +99,13 @@ public partial class MainWindow : Window
             {
                 await _terminals.InitializeAsync();
                 _terminals.SetTheme(App.Themes.Current);
+                ApplyLogo();
                 _terminals.SetScrollback(App.Settings.ScrollbackLines);
+
+                if (Tabs.Count == 0)
+                {
+                    NewTab(LayoutPreset.Single);
+                }
             }
             catch (Exception ex)
             {
@@ -133,6 +142,7 @@ public partial class MainWindow : Window
                 }
             }
 
+            _undo.Dispose();
             _data.Vault.Lock();
         };
     }
@@ -144,6 +154,14 @@ public partial class MainWindow : Window
 
     /// <summary>The selected terminal tab; null when nothing is selected or a web tab is. Terminal actions use this.</summary>
     private WorkspaceTab? Current => SelectedTab is { IsEmbedded: false } tab ? tab : null;
+
+    private readonly CatalogUndo _undo;
+
+    /// <summary>Ids of the connections and folders ticked in the sidebar with Ctrl or Shift. Empty when only one thing is selected.</summary>
+    private readonly HashSet<string> _multi = new(StringComparer.Ordinal);
+
+    private string? _multiAnchor;
+    private string? _releaseId;
 
     private readonly Dictionary<string, FrameworkElement> _webViews = new(StringComparer.Ordinal);
 
@@ -422,6 +440,12 @@ public partial class MainWindow : Window
             if (string.Equals(entry!.Type, "rdp", StringComparison.OrdinalIgnoreCase))
             {
                 OpenRemoteDesktop(entry, tab, session);
+                continue;
+            }
+
+            if (string.Equals(entry.Type, "vnc", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenVnc(entry, tab, session);
                 continue;
             }
 
@@ -727,6 +751,9 @@ public partial class MainWindow : Window
             new("Save current tab as workspace...", string.Empty, SaveWorkspace),
             new("Import connections...", string.Empty, () => Import_Click(this, new RoutedEventArgs())),
             new("Saved logins...", string.Empty, () => Logins_Click(this, new RoutedEventArgs())),
+            new("Export a backup...", string.Empty, ExportBackup),
+            new("Restore a backup...", string.Empty, RestoreBackup),
+            new("Undo last change to the connection list", string.Empty, UndoTree),
             new("Lock now", "Ctrl+Shift+L", LockNow),
             AutoLockItem(5),
             AutoLockItem(15),
@@ -804,6 +831,7 @@ public partial class MainWindow : Window
     private void OnThemeApplied(Theme theme)
     {
         _terminals.SetTheme(theme);
+        ApplyLogo();
         if (App.Themes.Problems.Count > 0)
         {
             SetStatus("Theme file problem: " + App.Themes.Problems[0]);
@@ -829,6 +857,9 @@ public partial class MainWindow : Window
 
         menu.Items.Add(new Separator());
 
+        menu.Items.Add(BuildLogoMenu());
+        menu.Items.Add(new Separator());
+
         var folder = new MenuItem { Header = "Open my themes folder" };
         folder.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"\"{App.Themes.UserFolder}\"") { UseShellExecute = true });
         menu.Items.Add(folder);
@@ -850,6 +881,452 @@ public partial class MainWindow : Window
         }
 
         menu.IsOpen = true;
+    }
+
+    // ---- terminal logo ----
+
+    private static readonly string[] LogoExtensions = { ".png", ".jpg", ".jpeg", ".webp", ".svg" };
+
+    private static readonly (string Name, int Percent)[] LogoStrengths = { ("Faint", 4), ("Subtle", 8), ("Medium", 13), ("Strong", 20) };
+
+    /// <summary>The "Terminal logo" submenu: none, the built-in logo, every image in the logos folder, and how strong it is.</summary>
+    private MenuItem BuildLogoMenu()
+    {
+        var root = new MenuItem { Header = "Terminal logo" };
+        var current = App.Settings.TerminalLogo ?? string.Empty;
+
+        MenuItem Choice(string header, string value)
+        {
+            var item = new MenuItem { Header = header, IsCheckable = true, IsChecked = string.Equals(current, value, StringComparison.OrdinalIgnoreCase) };
+            item.Click += (_, _) =>
+            {
+                App.Settings.TerminalLogo = value;
+                App.Settings.Save();
+                ApplyLogo();
+            };
+            return item;
+        }
+
+        root.Items.Add(Choice("None", string.Empty));
+
+        // The logos that ship with the app (Web\logos), the original first, then the user's own.
+        foreach (var file in BuiltInLogoFiles())
+        {
+            var id = System.IO.Path.GetFileNameWithoutExtension(file);
+            root.Items.Add(Choice(BuiltInLogoTitle(id), "builtin:" + id));
+        }
+
+        var userLogos = false;
+
+        try
+        {
+            if (Directory.Exists(AppPaths.Logos))
+            {
+                var files = Directory.EnumerateFiles(AppPaths.Logos)
+                    .Where(f => LogoExtensions.Contains(System.IO.Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+                foreach (var file in files)
+                {
+                    if (!userLogos)
+                    {
+                        root.Items.Add(new Separator());
+                        userLogos = true;
+                    }
+
+                    var name = System.IO.Path.GetFileName(file);
+                    root.Items.Add(Choice(System.IO.Path.GetFileNameWithoutExtension(file), name));
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An unreadable logos folder just means only the built-in choices are listed.
+        }
+
+        root.Items.Add(new Separator());
+        foreach (var (name, percent) in LogoStrengths)
+        {
+            var item = new MenuItem { Header = $"{name} ({percent}%)", IsCheckable = true, IsChecked = App.Settings.LogoOpacity == percent };
+            var chosen = percent;
+            item.Click += (_, _) =>
+            {
+                App.Settings.LogoOpacity = chosen;
+                App.Settings.Save();
+                ApplyLogo();
+            };
+            root.Items.Add(item);
+        }
+
+        root.Items.Add(new Separator());
+        var folder = new MenuItem { Header = "Open my logos folder" };
+        folder.Click += (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(AppPaths.Logos);
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Logos}\"") { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                SetStatus("Could not open the logos folder: " + ex.Message);
+            }
+        };
+        root.Items.Add(folder);
+        return root;
+    }
+
+    private static string BuiltInLogoFolder => System.IO.Path.Combine(AppContext.BaseDirectory, "Web", "logos");
+
+    /// <summary>The image files that ship with the app, with the original ("remotedeck") first.</summary>
+    private static IReadOnlyList<string> BuiltInLogoFiles()
+    {
+        try
+        {
+            return Directory.Exists(BuiltInLogoFolder)
+                ? Directory.EnumerateFiles(BuiltInLogoFolder, "*.png")
+                    .OrderBy(f => System.IO.Path.GetFileNameWithoutExtension(f) == "remotedeck" ? 0 : 1)
+                    .ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : Array.Empty<string>();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>"sunset-eagle" becomes "Sunset eagle"; the original is called RemoteDeck.</summary>
+    private static string BuiltInLogoTitle(string id)
+    {
+        if (id == "remotedeck")
+        {
+            return "RemoteDeck";
+        }
+
+        var text = id.Replace('-', ' ');
+        return text.Length == 0 ? id : char.ToUpperInvariant(text[0]) + text[1..];
+    }
+
+    /// <summary>Sends the chosen logo (or none) and its strength to the terminal page.</summary>
+    private void ApplyLogo()
+    {
+        var percent = Math.Clamp(App.Settings.LogoOpacity, 1, 50);
+        _terminals.SetLogo(LogoUrl(App.Settings.TerminalLogo), percent / 100.0, App.Themes.Current.Base == ThemeBase.Dark);
+    }
+
+    /// <summary>The page-relative path of a built-in logo, a data: URL for an image in the logos folder, or null.</summary>
+    private string? LogoUrl(string? setting)
+    {
+        if (string.IsNullOrWhiteSpace(setting))
+        {
+            return null;
+        }
+
+        if (setting.StartsWith("builtin:", StringComparison.OrdinalIgnoreCase))
+        {
+            // A plain name only, so a settings file cannot point outside the shipped logos.
+            var id = setting["builtin:".Length..];
+            var file = id + ".png";
+            return id.Length > 0 && id == System.IO.Path.GetFileName(id) && File.Exists(System.IO.Path.Combine(BuiltInLogoFolder, file))
+                ? "logos/" + file
+                : "logos/remotedeck.png";
+        }
+
+        try
+        {
+            // Only a plain file name inside the logos folder; a settings file must not be able to point elsewhere.
+            if (setting != System.IO.Path.GetFileName(setting))
+            {
+                return null;
+            }
+
+            var path = System.IO.Path.Combine(AppPaths.Logos, setting);
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length > 8 * 1024 * 1024)
+            {
+                SetStatus($"Logo \"{setting}\" was not found or is larger than 8 MB.");
+                return null;
+            }
+
+            var mime = System.IO.Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".webp" => "image/webp",
+                ".svg" => "image/svg+xml",
+                _ => null,
+            };
+            return mime is null ? null : $"data:{mime};base64,{Convert.ToBase64String(File.ReadAllBytes(path))}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SetStatus("Could not read the logo: " + ex.Message);
+            return null;
+        }
+    }
+
+    // ---- backup ----
+
+    private void ImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = ImportButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+
+        var connections = new MenuItem { Header = "Import connections from a file..." };
+        connections.Click += (_, _) => Import_Click(this, new RoutedEventArgs());
+        menu.Items.Add(connections);
+        menu.Items.Add(new Separator());
+
+        var export = new MenuItem { Header = "Export a backup..." };
+        export.Click += (_, _) => ExportBackup();
+        menu.Items.Add(export);
+
+        var restore = new MenuItem { Header = "Restore a backup..." };
+        restore.Click += (_, _) => RestoreBackup();
+        menu.Items.Add(restore);
+
+        menu.IsOpen = true;
+    }
+
+    private static string VersionText() =>
+        AppVersion.Label(typeof(MainWindow).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+
+    private static string BackupFilter => "RemoteDeck backup (*.rdbackup)|*.rdbackup|All files (*.*)|*.*";
+
+    /// <summary>Saves everything to one file for another computer. Passwords go in only when asked, and then the file is encrypted.</summary>
+    private void ExportBackup()
+    {
+        var vaultReady = !_locked && !_data.Vault.IsLocked;
+        var dialog = new BackupDialog(vaultReady) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var save = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export a backup",
+            Filter = BackupFilter,
+            DefaultExt = ConfigBundle.Extension,
+            FileName = $"RemoteDeck-backup-{DateTime.Now:yyyy-MM-dd}{ConfigBundle.Extension}",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (save.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            App.Settings.Save();
+            var credentials = dialog.IncludePasswords ? ReadAllCredentials() : null;
+            var bytes = ConfigBundle.Create(AppPaths.Folder, credentials, VersionText());
+            var encrypted = credentials is { Count: > 0 };
+            if (encrypted)
+            {
+                bytes = PassphraseBox.Seal(dialog.Passphrase, bytes);
+            }
+
+            var temporary = save.FileName + ".tmp";
+            File.WriteAllBytes(temporary, bytes);
+            File.Move(temporary, save.FileName, overwrite: true);
+
+            SetStatus(encrypted
+                ? $"Backup saved with {credentials!.Count} password(s), encrypted with your passphrase."
+                : "Backup saved (no passwords).");
+            if (dialog.IncludePasswords && !encrypted)
+            {
+                MessageBox.Show(this, "There were no saved passwords to include, so the backup is not encrypted.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or VaultException)
+        {
+            MessageBox.Show(this, "Could not save the backup: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Every password in the vault that a connection, folder or login refers to.</summary>
+    private List<BundleCredential> ReadAllCredentials()
+    {
+        var list = new List<BundleCredential>();
+        foreach (var id in _data.Store.ReferencedCredentialIds())
+        {
+            if (!_data.Vault.Contains(id))
+            {
+                continue;
+            }
+
+            string? user = null;
+            string? password = null;
+            _data.Vault.UseAsync(
+                id,
+                credential =>
+                {
+                    user = credential.Username;
+                    credential.ReadPassword(secret => password = secret.ToString());
+                    return ValueTask.FromResult(true);
+                }).AsTask().GetAwaiter().GetResult();
+
+            if (password is not null)
+            {
+                list.Add(new BundleCredential(id, user, password));
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>Reads a backup file and merges it into this installation.</summary>
+    private void RestoreBackup()
+    {
+        var open = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Restore a backup",
+            Filter = BackupFilter,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (open.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        byte[] data;
+        try
+        {
+            data = File.ReadAllBytes(open.FileName);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "Could not read the file: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var encrypted = PassphraseBox.IsSealed(data);
+        if (!encrypted && !ConfigBundle.IsZip(data))
+        {
+            MessageBox.Show(this, "That is not a RemoteDeck backup.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        byte[] bundle;
+        BackupDialog dialog;
+        while (true)
+        {
+            dialog = new BackupDialog(System.IO.Path.GetFileName(open.FileName), encrypted, null) { Owner = this };
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            if (!encrypted)
+            {
+                bundle = data;
+                break;
+            }
+
+            try
+            {
+                bundle = PassphraseBox.Open(dialog.Passphrase, data);
+                break;
+            }
+            catch (InvalidPassphraseException)
+            {
+                MessageBox.Show(this, "That passphrase does not open this backup.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch (VaultException ex)
+            {
+                MessageBox.Show(this, ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        try
+        {
+            var info = ConfigBundle.Inspect(bundle);
+            if (info.HasCredentials && (_locked || _data.Vault.IsLocked))
+            {
+                MessageBox.Show(this, "This backup carries passwords. Unlock the vault first, then restore it.", "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (dialog.Overwrite)
+            {
+                // A way back: the current data (without passwords) before anything is replaced.
+                var folder = System.IO.Path.Combine(AppPaths.Folder, "backups");
+                Directory.CreateDirectory(folder);
+                App.Settings.Save();
+                File.WriteAllBytes(
+                    System.IO.Path.Combine(folder, $"before-restore-{DateTime.Now:yyyyMMdd-HHmmss}{ConfigBundle.Extension}"),
+                    ConfigBundle.Create(AppPaths.Folder, null, VersionText()));
+            }
+
+            var result = ConfigBundle.Import(bundle, AppPaths.Folder, _data.Store, dialog.Overwrite);
+
+            var passwords = 0;
+            foreach (var credential in result.Credentials)
+            {
+                if (dialog.Overwrite || !_data.Vault.Contains(credential.Id))
+                {
+                    _data.Vault.Set(credential.Id, credential.Username, credential.Password);
+                    passwords++;
+                }
+            }
+
+            if (result.SettingsJson is not null)
+            {
+                ApplyImportedSettings(result.SettingsJson);
+            }
+
+            App.Themes.Reload();
+            RefreshTree();
+            if (WorkspaceList.Visibility == Visibility.Visible)
+            {
+                RefreshWorkspaces();
+            }
+
+            var lines = new List<string>
+            {
+                $"{result.Connections} connection(s), {result.Folders} folder(s), {result.Logins} login(s), {result.Files} file(s) and {passwords} password(s) restored.",
+            };
+            if (result.Skipped > 0)
+            {
+                lines.Add($"{result.Skipped} item(s) were already here and were left as they are.");
+            }
+
+            lines.AddRange(result.Notes);
+            lines.Add($"Made by RemoteDeck {info.AppVersion} on {info.Machine ?? "another computer"}, {info.CreatedUtc.LocalDateTime:g}.");
+            SetStatus($"Restored {result.Connections} connection(s) and {result.Files} file(s) from the backup.");
+            MessageBox.Show(this, string.Join("\n\n", lines), "Backup restored", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) when (ex is BundleException or IOException or UnauthorizedAccessException or VaultException or CatalogException)
+        {
+            MessageBox.Show(this, "Could not restore the backup: " + ex.Message, "RemoteDeck", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Takes the preferences that make sense across computers from a restored settings file.</summary>
+    private void ApplyImportedSettings(string json)
+    {
+        try
+        {
+            if (System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json) is not { } imported)
+            {
+                return;
+            }
+
+            App.Settings.ScrollbackLines = imported.ScrollbackLines;
+            App.Settings.AutoLockMinutes = imported.AutoLockMinutes;
+            App.Settings.ClipboardClearSeconds = imported.ClipboardClearSeconds;
+            App.Settings.Save();
+            _terminals.SetScrollback(App.Settings.ScrollbackLines);
+            if (!string.IsNullOrEmpty(imported.Theme) && App.Themes.Themes.Any(t => t.Name == imported.Theme))
+            {
+                App.Themes.Select(imported.Theme);
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // A settings file we cannot read just leaves the current preferences alone.
+        }
     }
 
     // ---- import ----
@@ -898,14 +1375,16 @@ public partial class MainWindow : Window
             {
                 Tree.Items.Add(MakeConnectionItem(result.Connection, result.FolderPath));
             }
-
-            return;
         }
-
-        foreach (var node in _data.Store.BuildTree())
+        else
         {
-            Tree.Items.Add(MakeItem(node));
+            foreach (var node in _data.Store.BuildTree())
+            {
+                Tree.Items.Add(MakeItem(node));
+            }
         }
+
+        PruneMulti();
     }
 
     private TreeViewItem MakeItem(CatalogNode node)
@@ -1013,7 +1492,49 @@ public partial class MainWindow : Window
     private void Tree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStart = e.GetPosition(null);
-        _dragCandidate = CanDragInTree ? FindItem(e.OriginalSource as DependencyObject)?.Tag : null;
+        _releaseId = null;
+        var item = FindItem(e.OriginalSource as DependencyObject);
+        _dragCandidate = CanDragInTree ? item?.Tag : null;
+
+        var id = ItemId(item?.Tag);
+        if (item is null || id is null)
+        {
+            return;
+        }
+
+        var modifiers = Keyboard.Modifiers;
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            // Ctrl+click ticks or unticks one more item.
+            ToggleMulti(id);
+            _dragCandidate = null;
+            e.Handled = true;
+        }
+        else if ((modifiers & ModifierKeys.Shift) != 0)
+        {
+            // Shift+click ticks everything between the last ticked item and this one.
+            SelectRange(item);
+            _dragCandidate = null;
+            e.Handled = true;
+        }
+        else if (_multi.Count > 1 && _multi.Contains(id))
+        {
+            // Pressing on one of the ticked items keeps the group for a drag; if it is only a click, the group is dropped when the button comes up.
+            _releaseId = id;
+        }
+        else if (_multi.Count > 0)
+        {
+            ClearMulti();
+        }
+    }
+
+    private void Tree_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_releaseId is not null)
+        {
+            _releaseId = null;
+            ClearMulti();
+        }
     }
 
     private void Tree_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -1030,8 +1551,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dragged = _dragCandidate;
+        // Dragging one of several ticked items takes all of them.
+        object dragged = _multi.Count > 1 && ItemId(_dragCandidate) is { } draggedId && _multi.Contains(draggedId)
+            ? SelectedTags()
+            : _dragCandidate;
         _dragCandidate = null;
+        _releaseId = null;
         try
         {
             DragDrop.DoDragDrop(Tree, new DataObject(DragFormat, dragged), DragDropEffects.Move);
@@ -1039,7 +1564,41 @@ public partial class MainWindow : Window
         finally
         {
             ClearDropHighlight();
+            UpdateMultiVisuals();
         }
+    }
+
+    /// <summary>The things being dragged: one connection or folder, or the whole group of ticked ones.</summary>
+    private static List<object> DraggedItems(object dragged) =>
+        dragged is List<object> group ? group : new List<object> { dragged };
+
+    /// <summary>Drops the items that are inside another dragged folder, since they travel with it.</summary>
+    private List<object> WithoutNested(List<object> items)
+    {
+        var folderIds = items.OfType<FolderEntry>().Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+
+        bool InsideDragged(string? parentId)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (parentId is not null && seen.Add(parentId))
+            {
+                if (folderIds.Contains(parentId))
+                {
+                    return true;
+                }
+
+                parentId = _data.Store.FindFolder(parentId)?.ParentId;
+            }
+
+            return false;
+        }
+
+        return items.Where(item => item switch
+        {
+            FolderEntry folder => !InsideDragged(folder.ParentId),
+            ConnectionEntry connection => !InsideDragged(connection.FolderId),
+            _ => false,
+        }).ToList();
     }
 
     /// <summary>Where a drop at this point would put the dragged item: a folder id, or null for the top level. Valid is false when it cannot go there.</summary>
@@ -1065,12 +1624,13 @@ public partial class MainWindow : Window
                 break;
         }
 
-        var valid = dragged switch
+        var items = WithoutNested(DraggedItems(dragged));
+        var valid = items.Count > 0 && items.All(candidate => candidate switch
         {
             FolderEntry folder => _data.Store.CanMoveFolder(folder.Id, folderId),
             ConnectionEntry => true,
             _ => false,
-        };
+        });
 
         return (valid, folderId, highlight);
     }
@@ -1099,22 +1659,33 @@ public partial class MainWindow : Window
         ClearDropHighlight();
         var (valid, folderId, _) = DropTarget(e);
         e.Handled = true;
-        if (!valid)
+        if (!valid || e.Data.GetData(DragFormat) is not { } dragged)
         {
             return;
         }
 
-        switch (e.Data.GetData(DragFormat))
+        var items = WithoutNested(DraggedItems(dragged));
+        var label = items.Count == 1
+            ? $"Move \"{(items[0] is FolderEntry movedFolder ? movedFolder.Name : ((ConnectionEntry)items[0]).Name)}\""
+            : $"Move {items.Count} items";
+        _undo.Run(label, () =>
         {
-            case FolderEntry folder:
-                Try(() => _data.Store.MoveFolder(folder.Id, folderId));
-                break;
-            case ConnectionEntry connection:
-                Try(() => _data.Store.MoveConnection(connection.Id, folderId));
-                break;
-        }
+            foreach (var item in items)
+            {
+                switch (item)
+                {
+                    case FolderEntry folder:
+                        Try(() => _data.Store.MoveFolder(folder.Id, folderId));
+                        break;
+                    case ConnectionEntry connection:
+                        Try(() => _data.Store.MoveConnection(connection.Id, folderId));
+                        break;
+                }
+            }
+        });
 
         RefreshTree();
+        SetStatus($"{label}. Press Ctrl+Z with the connection list selected to undo.");
     }
 
     private void ClearDropHighlight()
@@ -1138,15 +1709,248 @@ public partial class MainWindow : Window
 
     private void Tree_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && Tree.SelectedItem is TreeViewItem { Tag: ConnectionEntry entry })
+        var control = (Keyboard.Modifiers & ModifierKeys.Control) != 0 && (Keyboard.Modifiers & ~ModifierKeys.Control) == 0;
+        if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            _ = OpenSavedAsync(entry);
+            OpenSelected(newTab: false);
         }
-        else if (e.Key == Key.Delete && Tree.SelectedItem is TreeViewItem { Tag: not null } item)
+        else if (e.Key == Key.Delete)
         {
             e.Handled = true;
-            Delete(item.Tag);
+            DeleteSelected();
+        }
+        else if (e.Key == Key.Z && control)
+        {
+            e.Handled = true;
+            UndoTree();
+        }
+        else if (e.Key == Key.A && control)
+        {
+            // Everything that is showing.
+            e.Handled = true;
+            _multi.Clear();
+            foreach (var item in WalkItems(Tree.Items, visibleOnly: true))
+            {
+                if (ItemId(item.Tag) is { } id)
+                {
+                    _multi.Add(id);
+                }
+            }
+
+            UpdateMultiVisuals();
+        }
+        else if (e.Key == Key.Escape && _multi.Count > 0)
+        {
+            e.Handled = true;
+            ClearMulti();
+        }
+    }
+
+    // ---- ticking several items ----
+
+    private static string? ItemId(object? tag) => tag switch
+    {
+        FolderEntry folder => folder.Id,
+        ConnectionEntry connection => connection.Id,
+        _ => null,
+    };
+
+    /// <summary>The tree's items in display order. With <paramref name="visibleOnly"/>, the ones inside collapsed folders are left out.</summary>
+    private static IEnumerable<TreeViewItem> WalkItems(ItemCollection items, bool visibleOnly)
+    {
+        foreach (var entry in items)
+        {
+            if (entry is not TreeViewItem item)
+            {
+                continue;
+            }
+
+            yield return item;
+            if (!visibleOnly || item.IsExpanded)
+            {
+                foreach (var child in WalkItems(item.Items, visibleOnly))
+                {
+                    yield return child;
+                }
+            }
+        }
+    }
+
+    /// <summary>What the sidebar actions apply to: every ticked item, or just the selected one.</summary>
+    private List<object> SelectedTags()
+    {
+        if (_multi.Count > 1)
+        {
+            return WalkItems(Tree.Items, visibleOnly: false)
+                .Where(item => ItemId(item.Tag) is { } id && _multi.Contains(id))
+                .Select(item => item.Tag)
+                .ToList();
+        }
+
+        return Tree.SelectedItem is TreeViewItem { Tag: { } tag } && ItemId(tag) is not null
+            ? new List<object> { tag }
+            : new List<object>();
+    }
+
+    private void ToggleMulti(string id)
+    {
+        if (_multi.Count == 0 && Tree.SelectedItem is TreeViewItem { Tag: var selected } && ItemId(selected) is { } selectedId)
+        {
+            _multi.Add(selectedId);
+        }
+
+        if (!_multi.Remove(id))
+        {
+            _multi.Add(id);
+        }
+
+        _multiAnchor = id;
+        Tree.Focus();
+        UpdateMultiVisuals();
+    }
+
+    private void SelectRange(TreeViewItem clicked)
+    {
+        var visible = WalkItems(Tree.Items, visibleOnly: true).ToList();
+        var anchorId = _multiAnchor ?? (Tree.SelectedItem as TreeViewItem is { Tag: var selected } ? ItemId(selected) : null);
+        var from = visible.FindIndex(item => anchorId is not null && ItemId(item.Tag) == anchorId);
+        var to = visible.IndexOf(clicked);
+        if (from < 0 || to < 0)
+        {
+            if (ItemId(clicked.Tag) is { } id)
+            {
+                ToggleMulti(id);
+            }
+
+            return;
+        }
+
+        _multi.Clear();
+        for (var i = Math.Min(from, to); i <= Math.Max(from, to); i++)
+        {
+            if (ItemId(visible[i].Tag) is { } inRange)
+            {
+                _multi.Add(inRange);
+            }
+        }
+
+        _multiAnchor = anchorId;
+        Tree.Focus();
+        UpdateMultiVisuals();
+    }
+
+    private void ClearMulti()
+    {
+        _multi.Clear();
+        _multiAnchor = null;
+        UpdateMultiVisuals();
+    }
+
+    /// <summary>Forgets ticked items that no longer exist after the tree is rebuilt, and shades the rest.</summary>
+    private void PruneMulti()
+    {
+        if (_multi.Count == 0)
+        {
+            return;
+        }
+
+        var present = WalkItems(Tree.Items, visibleOnly: false)
+            .Select(item => ItemId(item.Tag))
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        _multi.IntersectWith(present);
+        if (_multiAnchor is not null && !present.Contains(_multiAnchor))
+        {
+            _multiAnchor = null;
+        }
+
+        UpdateMultiVisuals();
+    }
+
+    /// <summary>Shades the ticked items (when there are several; one is shown by the normal selection).</summary>
+    private void UpdateMultiVisuals()
+    {
+        Brush? shade = null;
+        if (_multi.Count > 1)
+        {
+            var accent = ((SolidColorBrush)FindResource("Accent")).Color;
+            shade = new SolidColorBrush(Color.FromArgb(0x55, accent.R, accent.G, accent.B));
+        }
+
+        foreach (var item in WalkItems(Tree.Items, visibleOnly: false))
+        {
+            var on = shade is not null && ItemId(item.Tag) is { } id && _multi.Contains(id);
+            var brush = on ? shade : null;
+            switch (item.Header)
+            {
+                case Panel panel:
+                    panel.Background = brush;
+                    break;
+                case TextBlock text:
+                    text.Background = brush;
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Opens the selected connection, or every ticked connection (each in its own tab).</summary>
+    private void OpenSelected(bool newTab)
+    {
+        var connections = SelectedTags().OfType<ConnectionEntry>().ToList();
+        if (connections.Count == 0)
+        {
+            return;
+        }
+
+        if (connections.Count == 1)
+        {
+            _ = OpenSavedAsync(connections[0], newTab);
+            return;
+        }
+
+        if (connections.Count > 10 && !Confirm($"Open {connections.Count} connections at once?"))
+        {
+            return;
+        }
+
+        foreach (var connection in connections)
+        {
+            _ = OpenSavedAsync(connection, newTab: true);
+        }
+    }
+
+    // ---- undo ----
+
+    private void UndoTree()
+    {
+        var label = _undo.Undo();
+        if (label is null)
+        {
+            SetStatus("Nothing to undo in the connection list.");
+            return;
+        }
+
+        RefreshTree();
+        SetStatus($"Undid: {label}.");
+    }
+
+    private void MenuUndo_Click(object sender, RoutedEventArgs e) => UndoTree();
+
+    /// <summary>Removes saved passwords that nothing uses any more, once the delete that set them aside can no longer be undone.</summary>
+    private void PurgeCredentials(IReadOnlyList<string> ids)
+    {
+        var stillUsed = _data.Store.ReferencedCredentialIds();
+        foreach (var id in ids.Where(id => !stillUsed.Contains(id)))
+        {
+            try
+            {
+                _data.Vault.Remove(id);
+            }
+            catch (Exception ex) when (ex is VaultException or InvalidOperationException)
+            {
+                // The vault is locked; the unused entry stays until a later clean-up.
+            }
         }
     }
 
@@ -1154,48 +1958,50 @@ public partial class MainWindow : Window
     {
         if (FindItem(e.OriginalSource as DependencyObject) is { } item)
         {
-            item.IsSelected = true;
-            item.Focus();
+            // Right-clicking one of several ticked items acts on all of them; anything else selects just that item.
+            if (!(_multi.Count > 1 && ItemId(item.Tag) is { } id && _multi.Contains(id)))
+            {
+                ClearMulti();
+                item.IsSelected = true;
+                item.Focus();
+            }
         }
     }
 
     private void TreeMenu_Opened(object sender, RoutedEventArgs e)
     {
-        var tag = (Tree.SelectedItem as TreeViewItem)?.Tag;
+        var tags = SelectedTags();
+        var many = tags.Count > 1;
+        var tag = many ? null : tags.FirstOrDefault();
         var connection = tag is ConnectionEntry;
         var folder = tag is FolderEntry;
+        var connectionCount = tags.OfType<ConnectionEntry>().Count();
+        var canOpen = many ? connectionCount > 0 : connection;
 
-        MenuOpen.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
-        MenuOpenNew.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
+        MenuOpen.Visibility = canOpen ? Visibility.Visible : Visibility.Collapsed;
+        MenuOpen.Header = many ? $"Open {connectionCount} connections" : "Open";
+        MenuOpenNew.Visibility = canOpen ? Visibility.Visible : Visibility.Collapsed;
+        MenuOpenNew.Header = many ? "Open each in a new tab" : "Open in new tab";
         MenuSftp.Visibility = tag is ConnectionEntry { Type: "ssh" } ? Visibility.Visible : Visibility.Collapsed;
         MenuCopyPassword.Visibility = tag is ConnectionEntry withPassword && _data.Store.CredentialIdFor(withPassword.Id) is not null
             ? Visibility.Visible
             : Visibility.Collapsed;
         MenuEdit.Visibility = connection ? Visibility.Visible : Visibility.Collapsed;
         MenuRename.Visibility = folder ? Visibility.Visible : Visibility.Collapsed;
-        MenuDelete.Visibility = connection || folder ? Visibility.Visible : Visibility.Collapsed;
+        MenuDelete.Visibility = many || connection || folder ? Visibility.Visible : Visibility.Collapsed;
+        MenuDelete.Header = many ? $"Delete {tags.Count} items" : "Delete";
+        MenuUndo.Visibility = _undo.CanUndo ? Visibility.Visible : Visibility.Collapsed;
+        MenuUndo.Header = _undo.NextLabel is { } next ? $"Undo: {next}" : "Undo";
 
-        if (!connection && !folder)
+        if (!many && !connection && !folder && !_undo.CanUndo)
         {
             ((ContextMenu)sender).IsOpen = false;
         }
     }
 
-    private void MenuOpen_Click(object sender, RoutedEventArgs e)
-    {
-        if (Tree.SelectedItem is TreeViewItem { Tag: ConnectionEntry entry })
-        {
-            _ = OpenSavedAsync(entry);
-        }
-    }
+    private void MenuOpen_Click(object sender, RoutedEventArgs e) => OpenSelected(newTab: false);
 
-    private void MenuOpenNew_Click(object sender, RoutedEventArgs e)
-    {
-        if (Tree.SelectedItem is TreeViewItem { Tag: ConnectionEntry entry })
-        {
-            _ = OpenSavedAsync(entry, newTab: true);
-        }
-    }
+    private void MenuOpenNew_Click(object sender, RoutedEventArgs e) => OpenSelected(newTab: true);
 
     private void MenuSftp_Click(object sender, RoutedEventArgs e)
     {
@@ -1291,26 +2097,20 @@ public partial class MainWindow : Window
             var dialog = new NameDialog("Rename folder", "Folder name", folder.Name) { Owner = this };
             if (dialog.ShowDialog() == true)
             {
-                Try(() => _data.Store.UpdateFolder(folder with { Name = dialog.Value }));
+                _undo.Run($"Rename folder \"{folder.Name}\"", () => Try(() => _data.Store.UpdateFolder(folder with { Name = dialog.Value })));
                 RefreshTree();
             }
         }
     }
 
-    private void MenuDelete_Click(object sender, RoutedEventArgs e)
-    {
-        if (Tree.SelectedItem is TreeViewItem { Tag: not null } item)
-        {
-            Delete(item.Tag);
-        }
-    }
+    private void MenuDelete_Click(object sender, RoutedEventArgs e) => DeleteSelected();
 
     private void NewFolder_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new NameDialog("New folder", "Folder name") { Owner = this };
         if (dialog.ShowDialog() == true)
         {
-            Try(() => _data.Store.AddFolder(new FolderEntry(ConnectionStore.NewId(), dialog.Value, SelectedFolderId())));
+            _undo.Run($"New folder \"{dialog.Value}\"", () => Try(() => _data.Store.AddFolder(new FolderEntry(ConnectionStore.NewId(), dialog.Value, SelectedFolderId()))));
             RefreshTree();
         }
     }
@@ -1395,6 +2195,20 @@ public partial class MainWindow : Window
         RefreshTree();
     }
 
+    /// <summary>Deletes the selected item, or every ticked one.</summary>
+    private void DeleteSelected()
+    {
+        var tags = SelectedTags();
+        if (tags.Count == 1)
+        {
+            Delete(tags[0]);
+        }
+        else if (tags.Count > 1)
+        {
+            DeleteMany(tags);
+        }
+    }
+
     private void Delete(object tag)
     {
         switch (tag)
@@ -1402,11 +2216,12 @@ public partial class MainWindow : Window
             case ConnectionEntry entry:
                 if (Confirm($"Delete the connection \"{entry.Name}\"?"))
                 {
-                    Try(() => _data.Store.RemoveConnection(entry.Id));
-                    if (entry.CredentialId is { } id && !_data.Store.ReferencedCredentialIds().Contains(id))
-                    {
-                        _data.Vault.Remove(id);
-                    }
+                    // Its saved password is kept until the delete can no longer be undone.
+                    _undo.Run(
+                        $"Delete \"{entry.Name}\"",
+                        () => Try(() => _data.Store.RemoveConnection(entry.Id)),
+                        entry.CredentialId is { } id ? new[] { id } : null);
+                    SetStatus($"Deleted \"{entry.Name}\". Press Ctrl+Z with the connection list selected to undo.");
                 }
 
                 break;
@@ -1419,6 +2234,76 @@ public partial class MainWindow : Window
         RefreshTree();
     }
 
+    /// <summary>Deletes several ticked items at once, with everything inside any ticked folder.</summary>
+    private void DeleteMany(List<object> tags)
+    {
+        var items = WithoutNested(tags);
+        var connections = new Dictionary<string, ConnectionEntry>(StringComparer.Ordinal);
+        var folderIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            switch (item)
+            {
+                case ConnectionEntry connection:
+                    connections[connection.Id] = connection;
+                    break;
+                case FolderEntry folder:
+                    folderIds.Add(folder.Id);
+                    var (subFolders, inside) = _data.Store.ContentsOf(folder.Id);
+                    foreach (var sub in subFolders)
+                    {
+                        folderIds.Add(sub.Id);
+                    }
+
+                    foreach (var contained in inside)
+                    {
+                        connections[contained.Id] = contained;
+                    }
+
+                    break;
+            }
+        }
+
+        var parts = new List<string>();
+        if (connections.Count > 0)
+        {
+            parts.Add(connections.Count == 1 ? "1 connection" : $"{connections.Count} connections");
+        }
+
+        if (folderIds.Count > 0)
+        {
+            parts.Add(folderIds.Count == 1 ? "1 folder" : $"{folderIds.Count} folders");
+        }
+
+        var what = string.Join(" and ", parts);
+        var hasFolders = items.OfType<FolderEntry>().Any();
+        if (!Confirm($"Delete {what}?" + (hasFolders ? " Everything inside the chosen folders is deleted too." : string.Empty) + "\n\nYou can undo this with Ctrl+Z."))
+        {
+            return;
+        }
+
+        var credentialIds = connections.Values.Select(c => c.CredentialId).OfType<string>().ToList();
+        _undo.Run(
+            $"Delete {what}",
+            () => Try(() =>
+            {
+                foreach (var folder in items.OfType<FolderEntry>())
+                {
+                    _data.Store.RemoveFolder(folder.Id, deleteContents: true);
+                }
+
+                foreach (var connection in items.OfType<ConnectionEntry>())
+                {
+                    _data.Store.RemoveConnection(connection.Id);
+                }
+            }),
+            credentialIds);
+
+        ClearMulti();
+        RefreshTree();
+        SetStatus($"Deleted {what}. Press Ctrl+Z with the connection list selected to undo.");
+    }
+
     private void DeleteFolder(FolderEntry folder)
     {
         var (subFolders, connections) = _data.Store.ContentsOf(folder.Id);
@@ -1426,7 +2311,7 @@ public partial class MainWindow : Window
         {
             if (Confirm($"Delete the empty folder \"{folder.Name}\"?"))
             {
-                Try(() => _data.Store.RemoveFolder(folder.Id));
+                _undo.Run($"Delete folder \"{folder.Name}\"", () => Try(() => _data.Store.RemoveFolder(folder.Id)));
             }
 
             return;
@@ -1443,7 +2328,8 @@ public partial class MainWindow : Window
             $"The folder \"{folder.Name}\" holds {what}.\n\n"
             + "Yes: delete the folder and everything inside it.\n"
             + "No: delete only the folder; its contents move up one level.\n"
-            + "Cancel: keep everything.",
+            + "Cancel: keep everything.\n\n"
+            + "You can undo this with Ctrl+Z.",
             "Delete folder",
             MessageBoxButton.YesNoCancel,
             MessageBoxImage.Warning,
@@ -1454,16 +2340,14 @@ public partial class MainWindow : Window
         }
 
         var deleteAll = answer == MessageBoxResult.Yes;
-        var credentialIds = connections.Select(c => c.CredentialId).OfType<string>().Distinct().ToList();
-        Try(() => _data.Store.RemoveFolder(folder.Id, deleteContents: deleteAll));
-        if (deleteAll)
-        {
-            var stillUsed = _data.Store.ReferencedCredentialIds();
-            foreach (var id in credentialIds.Where(id => !stillUsed.Contains(id)))
-            {
-                _data.Vault.Remove(id);
-            }
-        }
+        var credentialIds = deleteAll
+            ? connections.Select(c => c.CredentialId).OfType<string>().Distinct().ToList()
+            : null;
+        _undo.Run(
+            $"Delete folder \"{folder.Name}\"",
+            () => Try(() => _data.Store.RemoveFolder(folder.Id, deleteContents: deleteAll)),
+            credentialIds);
+        SetStatus($"Deleted folder \"{folder.Name}\". Press Ctrl+Z with the connection list selected to undo.");
     }
 
     private bool Confirm(string text) =>
@@ -1555,6 +2439,21 @@ public partial class MainWindow : Window
             return Task.CompletedTask;
         }
 
+        if (string.Equals(entry.Type, "vnc", StringComparison.OrdinalIgnoreCase))
+        {
+            // Like Remote Desktop: an empty pane of a split layout if there is one, otherwise a tab.
+            if (!newTab && Current is { Sessions.Count: > 1 } vncLayout && vncLayout.PickEmptyPane() is { } vncPane)
+            {
+                OpenVnc(entry, vncLayout, vncPane);
+            }
+            else
+            {
+                OpenVnc(entry);
+            }
+
+            return Task.CompletedTask;
+        }
+
         if (string.Equals(entry.Type, "editor", StringComparison.OrdinalIgnoreCase))
         {
             // The built-in editor takes an empty pane of a split layout, like a web page does.
@@ -1576,7 +2475,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, AI chat, editors, RDP and web pages. Other types come from plugins, which may be turned off (see Plugins).",
+                $"\"{entry.Type}\" connections can't be opened. Built in: SSH, Telnet, serial ports, git terminals, AI chat, editors, RDP, VNC and web pages. Other types come from plugins, which may be turned off (see Plugins).",
                 "RemoteDeck",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -1964,6 +2863,105 @@ public partial class MainWindow : Window
         WebHost.Children.Add(view);
         NewTab(tab);
         SetStatus($"Opened {entry.Name} in a tab.");
+    }
+
+    /// <summary>
+    /// Opens a saved VNC connection with the built-in viewer, in a tab or in an empty pane of a split layout, or in
+    /// an outside VNC viewer when the connection is set to use one. A saved password is used straight away; if the
+    /// server asks for one and none is saved, the viewer asks.
+    /// </summary>
+    private void OpenVnc(ConnectionEntry entry, WorkspaceTab? intoTab = null, PaneSession? intoPane = null)
+    {
+        var external = entry.Options is not null
+            && entry.Options.TryGetValue("externalClient", out var flag)
+            && string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase);
+        if (external)
+        {
+            LaunchVncViewer(entry);
+            return;
+        }
+
+        var (_, savedPassword) = ReadSavedLogin(entry);
+        var info = new RdpInfo(entry.Name, entry.Host, entry.Port ?? 5900, null, null, Vnc: true);
+
+        VncSessionView NewView(bool compact)
+        {
+            var view = new VncSessionView(info, savedPassword) { BarHidden = compact };
+            view.AskPassword = () =>
+            {
+                var prompt = new RdpPasswordDialog(string.Empty, entry.Host) { Owner = this };
+                if (prompt.ShowDialog() != true || prompt.Password.Length == 0)
+                {
+                    return null;
+                }
+
+                if (prompt.Remember)
+                {
+                    RememberRdpPassword(entry, string.Empty, prompt.Password);
+                }
+
+                return prompt.Password;
+            };
+            return view;
+        }
+
+        if (intoTab is not null && intoPane is not null)
+        {
+            var paneView = NewView(compact: true);
+            paneView.StatusChanged += text =>
+            {
+                intoPane.Title = $"{entry.Name} - {text}";
+                SyncTab(intoTab);
+            };
+            var overlay = new RdpOverlay(paneView, this);
+            intoPane.Rdp = info;
+            intoPane.ConnectionId = entry.Id;
+            intoPane.Title = entry.Name;
+            intoPane.State = ConnectionState.Connected;
+            _paneRdp[intoPane.TerminalId] = overlay;
+            SyncTab(intoTab);
+            LayoutPaneWebs();
+            SetStatus($"Opened {entry.Name} in a pane.");
+            return;
+        }
+
+        var tab = new WorkspaceTab(info);
+        var tabView = NewView(compact: false);
+        tabView.Visibility = Visibility.Collapsed;
+        _webViews[tab.Id] = tabView;
+        WebHost.Children.Add(tabView);
+        NewTab(tab);
+        SetStatus($"Opened {entry.Name} in a tab.");
+    }
+
+    /// <summary>Opens the connection in an outside VNC viewer: the one chosen on the connection, or whatever Windows uses for vnc:// links.</summary>
+    private void LaunchVncViewer(ConnectionEntry entry)
+    {
+        try
+        {
+            var port = entry.Port ?? 5900;
+            var viewer = entry.Options is not null && entry.Options.TryGetValue("viewer", out var path) ? path.Trim() : string.Empty;
+            if (viewer.Length > 0)
+            {
+                // host::port is understood by TightVNC, TigerVNC, RealVNC and UltraVNC.
+                Process.Start(new ProcessStartInfo(viewer, $"{entry.Host}::{port}") { UseShellExecute = true });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo($"vnc://{entry.Host}:{port}") { UseShellExecute = true });
+            }
+
+            SetStatus($"Opened {entry.Name} in a VNC viewer.");
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+        {
+            MessageBox.Show(
+                this,
+                "Could not start a VNC viewer: " + ex.Message + "\n\nChoose a viewer program in the connection's settings, or untick \"Open in an external VNC viewer\" to use the built-in one.",
+                "RemoteDeck",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     /// <summary>The user name and password saved for a connection, if any. A locked vault or a missing entry gives nothing.</summary>
